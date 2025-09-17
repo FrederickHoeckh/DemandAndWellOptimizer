@@ -1,0 +1,61 @@
+Daily Water Demand Estimator
+
+To estimate future water demand, we use historical data of population count, water consumption, weather data, and holidays. 
+The first step is the thorough analysis of historical data. Early in the process it showed that the per capita demand can be
+related to various factors. It is also a better parameter to work with as it is independent of the population count.
+A comparative analysis with temporal information showed differences in demand depending on the day of the week, time of the year, 
+and, if the day is holiday. The correlation analysis to weather data showed a substantial correlation to the average temperature 
+and weak to no correlation to other weather variables. Hence, a temperature correction is applied while other variables are neglected.
+From here, we can organize the days in a year in different categories that are stored in a look-up table.
+
+The tool is designed to estimate per capita demand for a specific day. For an estimate, the tool is first provided with basic information: 
+a "holiday calendar", and a temperature time-series for the region where demand is estimated.
+Then we provide a date for which demand should be estimated and the tool checks for day of the week, time of the year, holiday or not, 
+applies a temperature correction (if provided) and returns an estimate for the per capita demand. 
+To obtain the total demand, the result is multiplied with the population count. 
+
+The tool is also equipped to estimate WD for different scenarios (mean, max, mixed) to estimate the average or maximum demand for a day.
+To produce longer time-series, a "mixed" scenario is included that introduces variability within reasonable boundaries. If monthly values 
+are required, the computations are still performed on a daily basis but aggregated in monthly sums.
+
+Limitations:
+The tool requires a set of input data (daily values for daily demand estimate) of water demand, and weather data. Furthermore, population
+counts are needed to compute the per-capita which is usually available in monthly or annual resolution. A linear interpolation is usually 
+appropriate as population numbers usually don't experience drastic changes throughout the year. The obtained per capita demand is still
+reasonably accurate. 
+
+The tool is technically only valid for municipalities that are present in the input data. However, similarities in per capita demand do 
+usually not differ substantially if no major industry is present that receives water from the water supplier. 
+Hence, estimates for third municipalities can be made, but the uncertainty is higher, especially if spatial distances are large (weather).
+
+How to: 
+Script "Demand Estimator.py" estimates daily per capita demand with temperature correction in different variants
+	after Line 430: start, end: Datestring of start and end date [dd.mm.yyyy]
+	temperature must be provided for every day
+
+       "estimateDemand_daily.py" can estimate daily demand, but should rather be provided with estimated demand from "Demand Estimator.py"
+	file contains time series with daily values of per capita water demand in [m^3/d]
+	after Line 304: start, end: Datestring of start and end date [dd.mm.yyyy]
+	provide path and name to demand file in variable "file"
+	define restrictions as dictionary: {wellname:{"rate":X, "start": date, "end": date, "year": year}}
+	function "getWellRates computes total demand and well rates, requires: population variant, scenario, startdate, enddate, restrictions, BWV rate, file, initial population
+     
+       "estimateDemand_monthly.py" estimates monthly water demand, doesn't require a prepared water demand time series, uses historic averages
+	everything else is more or less equal to the daily version (above)
+
+
+Demand2Well
+
+To obtain the well extraction rates for a certain demand, the required volume of water is distributed between the available wells, according
+to the respective legal limits (Wasserrecht). We compute the fraction that each well contributes to the total extraction by dividing the 
+individual extraction limit with the sum of all extraction limits. 
+
+To account for irregularities in the well operation, an option to limit the well extraction is included. The limit can be any number larger than zero.
+To apply a restriction to a well, start- and end-date of the restriction, as well as the maximum possible rate during this time are passed to 
+the distribution tool. After the initial rates are computed, it is checked if any legal restricitions are exceeded, if so the rates are redistributed 
+if possible, until all limits are obeyed. The tool seeks to distribute the entire extraction without using any of the limited number of peak demand days. 
+If this is not possible, the tool keeps track of how many days have been used within a year. 
+
+Limitations:
+While in reality well extractions are controlled by a black-box model that consideres water levels in wells and energy costs on top of the legal limits.
+The present tool is not capable of reproducing the two additional factors.
