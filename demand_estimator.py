@@ -45,7 +45,7 @@ def isholiday(date, hol):
         return False,None
     
 
-def get_rch4date(date, frac_mat, gwn, xg):
+def get_T4date(date, frac_mat, gwn, xg):
     if date is not None:
         if type(date) is str:
             date_str = " " + date + "-" + date + " "
@@ -282,7 +282,7 @@ date_range  = pd.date_range(start_date, end_date)
 T_name      = "./temperature/Lurch01_Temperatur_Tageswert_ConstStep_1d_01111999.dat"
 T           = pd.read_csv(T_name, delimiter = ",")
 
-T_list = Parallel(n_jobs=8)(delayed(get_rch4date)(date, frac_mat, T, xg) for date in date_range)
+T_list = Parallel(n_jobs=8)(delayed(get_T4date)(date, frac_mat, T, xg) for date in date_range)
 
 Tavg = pd.DataFrame()
 Tavg["Tm"] = [m.mean() for m in T_list]
@@ -385,6 +385,8 @@ for example: holidays, gardening time etc.
 The function "plot_doy_wpc_w_guess" produces timeseries (daily) of per capita water demand 
 for a given time period, temperature, and scenario
 here you can just plug in a future time period with according temperatures 
+
+dow: day of week
 """
 
 

@@ -28,20 +28,69 @@ The tool is technically only valid for municipalities that are present in the in
 usually not differ substantially if no major industry is present that receives water from the water supplier. 
 Hence, estimates for third municipalities can be made, but the uncertainty is higher, especially if spatial distances are large (weather).
 
-How to: 
-Script "Demand Estimator.py" estimates daily per capita demand with temperature correction in different variants
-	after Line 430: start, end: Datestring of start and end date [dd.mm.yyyy]
-	temperature must be provided for every day
+"asg_wpc.csv" contains daily per capita demand for the regions am (Ammerbuch), tu (Tübingen), and rb (Rottenburg)
+values are computed by dividing the provided amount of water for each date with the linearly interpolated (original: annual values) population number for this region 
+column "mean" is computed with weighted averages for each region
+To correct for missing municipalities (e.g. Böblingen) the per capita demand was computed from monthly data (all municipalities available) 
+and a bias correction is made (~ +13%).
 
-       "estimateDemand_daily.py" can estimate daily demand, but should rather be provided with estimated demand from "Demand Estimator.py"
-	file contains time series with daily values of per capita water demand in [m^3/d]
-	after Line 304: start, end: Datestring of start and end date [dd.mm.yyyy]
-	provide path and name to demand file in variable "file"
-	define restrictions as dictionary: {wellname:{"rate":X, "start": date, "end": date, "year": year}}
-	function "getWellRates computes total demand and well rates, requires: population variant, scenario, startdate, enddate, restrictions, BWV rate, file, initial population
-     
-       "estimateDemand_monthly.py" estimates monthly water demand, doesn't require a prepared water demand time series, uses historic averages
-	everything else is more or less equal to the daily version (above)
+How to: 
+Script 
+"demand_estimator.py" estimates daily per capita demand with temperature correction in different variants
+after Line 430: start, end: Datestring of start and end date [dd.mm.yyyy]
+temperature must be provided for every day
+
+Line 258ff:
+load spatial data (model outline)
+load temperature data
+temperature is mapped on 500x500m grid and averages are calculated for every day 
+	--> "getT4date" computes spatial average temp for given date
+
+Line 292ff:
+Municipalities are defined
+load population data
+make manual corrections
+load population predictions (relative growth of population starting from population in december 2020)
+per capita demand data is loaded (computed in a different script)
+load holiday data [name, start_date, end_date]
+time series of per capita demand is manually subdivided into periods with different characteristics (iterative process)
+
+Line 368ff:
+compute temperature correction, linear function, least square fit
+
+Line 379ff:
+"wpc_dic" is defined: dictionary containing per capita demand values for all previously defined periods
+
+Line 439ff:
+Example calculation: 
+provide start and end date
+turn into "date_range"
+create empty dataframe with column "demand" filled with zeros
+define scenario
+loop through dates
+	get temperature for date
+	call "getDemand4date" and save result in dataframe
+dataframe is saved as .csv file
+
+
+Function "getDemand4date": computes per capita demand for date provided
+requires the "wpc_dic", date, holiday data, scenario [mid,max,mixed], Temperature is optional
+checks for day of week, day of year, and if the date is in a holiday period or not
+based on the scenario different parts of the "wpc_dic" are checked for per capita demand
+Scenario "mixed": random number "a" is drawn between 0 and 1 -> weight between mean and max demand
+temperature correction applied in the end
+
+"demand2well.py" can estimate daily demand, but should rather be provided with estimated demand from "Demand Estimator.py"
+file contains time series with daily values of per capita water demand in [m^3/d]
+after Line 304: start, end: Datestring of start and end date [dd.mm.yyyy]
+provide path and name to demand file in variable "file"
+define restrictions as dictionary: {wellname:{"rate":X, "start": date, "end": date, "year": year}}
+function "getWellRates computes total demand and well rates, requires: population variant, scenario, startdate, enddate, restrictions, BWV rate, file, initial population
+
+
+  
+"estimateDemand_monthly.py" estimates monthly water demand, doesn't require a prepared water demand time series, uses historic averages
+everything else is more or less equal to the daily version (above)
 
 
 Demand2Well
