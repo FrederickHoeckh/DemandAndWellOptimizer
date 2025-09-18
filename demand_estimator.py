@@ -446,7 +446,7 @@ for date in dates:
     temp = Tavg[Tavg.index==date]["Tm"].values[0]
     dmnd = getDemand4date(pd.to_datetime(date), wpc_dic, hol, scenario = scenario, T = [temp,x_fitted])
     # Add correction to value and put in df
-    d4d19["demand"][d4d19.index==date] = dmnd*1.0352924526912013#*0.8978755419715864# *wpc_all/perhead["mean"].mean()*1e-3
+    d4d19["demand"][d4d19.index==date] = dmnd#*1.0352924526912013#*0.8978755419715864# *wpc_all/perhead["mean"].mean()*1e-3
 
 
 d4d19.to_csv("./WaterDemand/syntheticDemand_14_21.csv")

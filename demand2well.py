@@ -7,7 +7,7 @@ Created on Thu Jan 30 09:21:57 2025
 import pandas as pd
 import numpy as np
 import pickle
-import flopy
+# import flopy
 from scipy.optimize import linprog
 
 def get_demand(PopVar, scenario, start, end, daily = True):
@@ -256,7 +256,10 @@ def getWellRates(PopVar, scenario, start, end, restrictions, bwv = None,  unit =
             demand = pd.read_csv(file, index_col="date", parse_dates=True)
         except ValueError:
             demand = pd.read_csv(file, index_col=0, parse_dates=True)
-        demand*=(pop*1.091*1.1)
+        if type(pop) is not int:
+            demand["demand"] = pop.values.squeeze()*demand.values.squeeze()*1.091
+        else:
+            demand["demand"] = pop*demand.values.squeeze()*1.091
         start = demand.index[0]
         end = demand.index[-1]
     # demand = wells_orig.iloc[:,:-4].sum(axis = 1)/1.09+0.09692*86400
@@ -339,19 +342,36 @@ if __name__ == "__main__":
     # plot_stuff(wells,bwv,wr_ts, "original")
 #%%       
     bwv = None
-    file = "./WaterDemand/syntheticDemand19.csv"
-    restrictions = {"TB Breitenholz":{"rate": 0, "start": "01.03.2019", "end": "29.02.2020", "year": 2025}}
-    demand, demand_after_bwv, wells, bwv_ts, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, file = file, pop = 123000)
+    start = "2014-01-01"
+    end = "2021-12-31"
+    file = "./WaterDemand/syntheticDemand_14_21.csv"
+    # restrictions = {"TB Breitenholz":{"rate": 0, "start": "01.03.2019", "end": "29.02.2020", "year": 2025}}
+    restriction = {}
+    ew = pd.read_csv("./Population/EinwohnerASG_corrected.csv", index_col = "Jahr")
+    pop = ew.sum(axis = 1).loc[2014:2021]
+    pop.index = pd.to_datetime(pop.index.astype(str), format="%Y")
+
+    # Create daily date range
+    date_range = pd.date_range(start="2014-01-01", end="2021-12-31", freq="D")
+
+    # Reindex to daily and interpolate
+    pop_daily = pop.reindex(date_range).interpolate(method="linear")
+
+    # (Optional) set a name for the index
+    pop_daily.index.name = "Date"
+    pop = pop_daily.astype(int)
+    
+    demand, demand_after_bwv, wells, bwv_ts, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, file = file, pop = pop)
     # start = demand.index[0]
     # end = demand.index[-1]
     for col in wellfile.columns:
         if not "TB" in col:
             wells[col] = wellfile.loc[pd.to_datetime(start):pd.to_datetime(end, dayfirst=True),col]
     
-    wells.to_csv("./WellRates/well_rates_19_synthetic_K1.csv")
+    wells.to_csv("./WellRates/well_rates_14_21_syn_demand.csv")
     wells_K1 = wells.copy()
     demand_K1 = demand.copy()
-    plot_stuff(wells,bwv_ts,demand,wr_ts, "K1 reduced",wells_orig.sum(axis = 1))
+    # plot_stuff(wells,bwv_ts,demand,wr_ts, "K1 reduced",wells_orig.sum(axis = 1))
 #%%      
     bwv = None
     restrictions = {"BWV": {"rate": 50, "start": "01.03.2019", "end": "29.02.2020", "year": 2025}}
