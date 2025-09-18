@@ -435,8 +435,8 @@ wpc_mixed = plot_doy_wpc_w_guess(perhead, hol, wpc_dic, x_fitted, plot_T = False
 wpc_mid *= wpc_all/perhead["mean"].mean()*1e-3
 
 #%% Example calculation
-start = "2019-11-01"
-end = "2020-10-31"
+start = "2014-01-01"
+end = "2021-12-31"
 dates = pd.date_range(start,end)
 d4d19 = pd.DataFrame()
 d4d19["demand"] = np.zeros(dates.shape[0])
@@ -446,7 +446,7 @@ for date in dates:
     temp = Tavg[Tavg.index==date]["Tm"].values[0]
     dmnd = getDemand4date(pd.to_datetime(date), wpc_dic, hol, scenario = scenario, T = [temp,x_fitted])
     # Add correction to value and put in df
-    d4d19["demand"][d4d19.index==date] = dmnd*0.8978755419715864# *wpc_all/perhead["mean"].mean()*1e-3
+    d4d19["demand"][d4d19.index==date] = dmnd*1.0352924526912013#*0.8978755419715864# *wpc_all/perhead["mean"].mean()*1e-3
 
 
-d4d19.to_csv("./WaterDemand/syntheticDemand19.csv")
+d4d19.to_csv("./WaterDemand/syntheticDemand_14_21.csv")

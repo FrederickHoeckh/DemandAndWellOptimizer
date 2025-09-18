@@ -177,4 +177,6 @@ if prior_sim:
             deltaq, deltah = redistribute(nwf.loc[date], deficit, hq, diffs.loc[date])
             nwf.loc[date, deltaq.index] += deltaq
             diffs.loc[date, deltah.index] += deltah
+        
+    check_rates(demand_, rates_, wr, wr_ts_, restrictions)
 nwf.to_csv("./WellRates/new_well_rates.csv")
