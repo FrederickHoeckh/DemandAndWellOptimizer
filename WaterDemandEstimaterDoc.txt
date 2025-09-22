@@ -36,7 +36,7 @@ and a bias correction is made (~ +13%).
 
 How to: 
 Script 
-"demand_estimator.py" estimates daily per capita demand with temperature correction in different variants
+"demand_estimator.py" estimates daily per capita demand for ASG municipalities with temperature correction in different variants
 after Line 430: start, end: Datestring of start and end date [dd.mm.yyyy]
 temperature must be provided for every day
 
@@ -80,18 +80,14 @@ based on the scenario different parts of the "wpc_dic" are checked for per capit
 Scenario "mixed": random number "a" is drawn between 0 and 1 -> weight between mean and max demand
 temperature correction applied in the end
 
+###================================================================================================================###
+
 "demand2well.py" can estimate daily demand, but should rather be provided with estimated demand from "Demand Estimator.py"
 file contains time series with daily values of per capita water demand in [m^3/d]
 after Line 304: start, end: Datestring of start and end date [dd.mm.yyyy]
 provide path and name to demand file in variable "file"
 define restrictions as dictionary: {wellname:{"rate":X, "start": date, "end": date, "year": year}}
 function "getWellRates computes total demand and well rates, requires: population variant, scenario, startdate, enddate, restrictions, BWV rate, file, initial population
-
-
-  
-"estimateDemand_monthly.py" estimates monthly water demand, doesn't require a prepared water demand time series, uses historic averages
-everything else is more or less equal to the daily version (above)
-
 
 Demand2Well
 
@@ -108,3 +104,129 @@ If this is not possible, the tool keeps track of how many days have been used wi
 Limitations:
 While in reality well extractions are controlled by a black-box model that consideres water levels in wells and energy costs on top of the legal limits.
 The present tool is not capable of reproducing the two additional factors.
+
+
+Line 315ff:
+define population scenario "PopVar" 
+define start & end of estimation period
+define unit ["m3/d" recommended]
+define fixed bwv rate, if None it will be set to the defaukt value of 103 l/s
+define restrictions: Dictionary {Name_well: {"rate": [m^3/d], "start": [dd.mm.yyyy], "end": [dd.mm.yyyy]}}
+	for as many wells as desired. At some point the optimization wont be able to redistribute the water demand as legal limits are exceeded.
+
+Line 332ff:
+load original well data for comparison and datastructure for output files.
+
+Line 343ff: 
+Example calculation with pre-defined demand from "demand_estimator.py". file = "./WaterDemand/syntheticDemand_14_21.csv"
+"scenario" variable has no function if demand file is provided!!!
+No restrictions (restrictions = {})
+load original population data (ew = pd.read_csv("./Population/EinwohnerASG_corrected.csv", index_col = "Jahr"))
+	and process to fit required format
+call main function:
+	demand, demand_after_bwv, wells, bwv_ts, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, file = file, pop = pop)
+	original well file is updated with new columns
+
+Line 375ff:
+Example calculation without provided demand --> demand is estimated 
+Population number is constant (pop = 123000 in Line 381)
+BWV restrictions to 50 l/s: restrictions = {"BWV": {"rate": 50, "start": "01.03.2019", "end": "29.02.2020", "year": 2025}}
+original well file is updated...
+
+Function: "getWellRates":
+Main function. 
+Input:  PopVar: Population variant (for future estimates, use initial population from 12/2021)
+	scenario: Population growth scenario [V1-V5], loads scneario from saved dictionary (function "get_demand"), no effect if population number or timeseries is provided
+	start, end: date
+	restrictions: [dict]
+	bwv: rate (if None --> bwv = 103 [l/s]
+	unit: [m^3/d] no effect yet, will likely be removed
+	file: path to water demand file containing per capita demand [m^3/(d*person)]
+	pop: population count, integer or timeseries (pandas df)
+	
+Output: demand : total water demand
+	demand_after_bwv: water demand that has to be satisfied from wells (BWV substracted)
+	wells: well rates in m^3/d
+	bwv_ts: time series of BWV water delivery
+	wr_ts: time series that shows if regular extraction days or peak demand days are used, from function "demand2well"
+		contains daily values of m^3/d for each well.
+
+Checks if "file" is None, if so demand is estimated with function "get_demand"
+if "file" is provided, per capita demand is multiplied with population count and multiplied with 1.091 (compensation for water use in production)
+Checks if "bwv" is defined, if not it is set to default (103 l/s), converted in timeseries
+Checks for restrictions in BWV and alters timeseries accordingly
+Computes demand that must be satisfied from wells (total demand - bwv delivery)
+calls function "demand2well"
+	
+Function: "demand2well":
+Input:  demand: water demand after BWV delivery [m^3/d]
+	restrictions: dict, as defined above
+
+Output: rates: pumping rates for ASG wells
+	wr_ts: see above
+
+loads file containing legal limits (Wasserrechte) + processing, conversion to timeseries
+computing fractions from water rights: frac = wr/wr.sum() -> fraction of demand that is produced by well X
+checks restrictions: if restrictions are present they are included in wr_ts as upper limits
+computing fractions again with restrictions
+pumping rates are computed by multiplying fractions (no restrictions) with total water demand
+calls function "check_rates"
+
+Function: "check_rates":
+Input:  demand: should be clear by now :)
+	rates: well rates (see above)
+	wr: actually not required
+	wr_ts: see above
+	restrictions: see above
+	verbose: bool, let's function talk
+	couple_compensation: bool, default: False, 
+	
+Output: rates: optimized well rates
+	wr_ts: as above, after optimization, if peak demand days are used, it is indicated here
+	
+Function checks if any of the well rates exceed the legal limits (wr_ts)
+	if verbose: print output if limits are exceeded
+loops through all years in provided input files
+	checks restrictions, if any restrictions apply a flag is set
+	checks if couple compensation is applied: checks restriction for well couples (Entringen/Poltringen), if one of them is restricted, 
+		the other well within the couple will compensate 50 % (can be changed) of the restricted wells deficit (common extractions limits - gemeinsames Wasserrecht)
+	if legal limits are exceeded, loop through all days and wells
+	if a flag is found: check if peak demand days are available -> if yes: peak extraction set in wr_ts
+recompute extraction fractions with updated wr_ts
+recompute well rates
+check for deficits again, print results and return optimized well rates
+	
+
+Function: "get_demand":
+Input:  PopVar: see above
+	scenario: see above
+	start, end: date
+	daily: bool, default is True, if False, monthly aggregation is applied but still returns m^3/day
+Output: demand: water demand (daily or monthly, but always [m^3/d] (Modflow requiremen))
+
+Function roughly estimates water demand. Computations performed on monthly basis, also for daily output -> one month will have similar demand every day
+
+
+Evaluation of aboves Scripts:
+Year, Original Demand [m^3/year], Estimated Demand (scenario: "mixed) [m^3/year], Error (scenario: "mixed) [%], , Estimated Demand (scenario: "max), Error (scenario: "max)
+2014, 6815679.926, 6852468, 0.54, 7426851, 8.97
+2015, 7267748.868, 7028057, -3.3, 7656016, 5.34
+2016, 7032125.598, 7050058, 0.26, 7647376, 8.75
+2017, 7288545.51, 7072922, -2.96, 7743015, 6.24
+2018, 7357170.501, 7146593, -2.86, 757638, 2.97
+2019, 7611346.226, 7160478, -5.92, 7819558, 2.74
+2020, 7768607.33, 7164769, -7.78, 7850224, 1.05
+2021, 7421903.895, 7164565, -3.47, 7758240, 4.53
+
+
+
+
+
+
+
+  
+
+###================================================================================================================###
+
+"estimateDemand_monthly.py" estimates monthly water demand, doesn't require a prepared water demand time series, uses historic averages
+everything else is more or less equal to the daily version (above)
