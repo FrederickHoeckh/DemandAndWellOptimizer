@@ -219,10 +219,49 @@ Year, Original Demand [m^3/year], Estimated Demand (scenario: "mixed) [m^3/year]
 2021, 7421903.895, 7164565, -3.47, 7758240, 4.53
 
 
+###================================================================================================================###
+Script: "changeWellsFromDiffs.py"
+used in postprocessing of simulations. Reads virtual observers, thresholds, sensitivities for wells, well rates that are used in the simulation. 
+Start and end date must be specified and must match simulation period
 
+Assumption: water level and well rate are related linearly
 
+call function check_heads --> returns virtual observations, flags (indicator if thresholds are exceeded), and diffs (difference between threshold and virtual observation)
 
+loop through all dates in sim. period:
+	# very small value, optimization can't optimize it to zero but to a very small number can also be 1e-12...
+	while any differences < 1e-6: 
+		call function optimize_pumping_diff
+		replace old diffs 
+		subtract differences (dq) of pumping rate
+		compute deficit (new pumping rates-required/old pumping rates)
+		redistribute deficit based on sensitivities
+		estimate new head values after optimization 
+		compute resulting differences
 
+function "optimize_pumping_diff"
+input:  hq: sensitivities dh/dq
+	d: differences
+	q0: current pumping rates
+	q_max: maximum allowd increment
+	cost: weight vector for wells (all the same)
+	buffer: for threshold
+output: dict:   success (bool)
+		dq: difference in pumping rates
+		diff_new: new differences after optimization
+		res: optimization result (res.x = dq)
+
+function uses "scipy.optimize.linprog" to optimize all differences for a given date to be greater or equal to zero
+or any given value for input parameter "buffer"
+
+function "redistribute"
+input: 	nwf: new well file (contains pumping rates after optimization)
+	deficit: deficit resulting from optimization
+	hq: sensitivities
+	newdiffs: differences after optimization (how much room is left to pump more)
+output: 
+	delta: difference in pumping rates
+	deltah: estimated new difference to threshold
 
   
 
