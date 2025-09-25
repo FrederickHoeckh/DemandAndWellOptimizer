@@ -8,11 +8,12 @@ import pandas as pd
 import numpy as np
 import pickle
 import flopy
+import re
 from scipy.optimize import linprog
 from demand2well import PoEn, check_rates
 
 def check_heads(start,end,vobs,thr):
-    hdsfile = flopy.utils.binaryfile.HeadFile("./GW40.hds")
+    hdsfile = flopy.utils.binaryfile.HeadFile("./model/GW40.hds")
     times = hdsfile.get_times()
 
     thr.set_index("name", inplace = True)
@@ -132,12 +133,53 @@ def redistribute(nwf, deficit, hq, newdiffs):
     newdiffs-=deltah
     return delta, deltah
 
+def translateWel2Df(wel_file):
+    wel_file = "./model/GW40_0.wel"
+    records = []
+    period = None
+    
+    with open(wel_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("BEGIN period"):
+                period = int(line.split()[2])
+            elif line.startswith("END period"):
+                period = None
+            elif period is not None and line and not line.startswith("#"):
+                parts = line.split()
+                # parse
+                layer = int(parts[0])
+                cellid = int(parts[1])
+                rate = float(parts[2])
+                # well name may have spaces or quotes
+                name_match = re.findall(r'"(.*?)"', line)
+                if name_match:
+                    name = name_match[0].lower()
+                else:
+                    # handle unquoted names like gehrnfeld
+                    name = parts[-1].lower()
+                records.append((period, name, abs(rate)))
+    
+    # build DataFrame
+    df = pd.DataFrame(records, columns=["period", "well", "rate"])
+    
+    # pivot into wide format
+    df_wide = df.pivot(index="period", columns="well", values="rate").fillna(0)
+    
+    # optional: assign dates to stress periods (example: daily starting 2019-11-01)
+    start_date = pd.to_datetime("2019-11-01")
+    df_wide.index = pd.date_range(start=start_date, periods=df_wide.shape[0], freq="D")
+    df_wide.index.name = "Time"
+    return df_wide
+
+
 #%%
 
 start = "2019-11-01"
 end = "2020-10-31"
 dr = pd.date_range(start,end,)
 prior_sim = True
+useWelFile = True
 
 nn = ['Kiebingen1', 'Kiebingen2', 'Kiebingen3', 'Kiebingen4', 'Kiebingen5',
        'Kiebingen6', 'Altingen3', 'Breitenholz', 'Entringen1', 'Entringen2',
@@ -151,11 +193,16 @@ if prior_sim:
     vobs = pd.read_csv("./spatial/vobs_sorted.csv") 
     thr = pd.read_csv("./WellData/wellThresholds_2.csv")
     # Check headfile for virtual observers -> thresholds exceeded?
+   
     hq = pd.read_csv("./WellData/hq_sc.csv", index_col="Unnamed: 0") # Sensitivities
     obs,flags,diffs = check_heads(start,end,vobs,thr)
     diffs.columns = hq.index
-    wellfile = pd.read_csv("./WellRates/well_rates_19_20_orig.csv", parse_dates=True, index_col = "Time",dtype=float)
-    wellfile.columns = [col.lower() for col in wellfile.columns]
+    if useWelFile:
+        wel_file = "./model/GW40_0.wel"
+        wellfile = translateWel2Df(wel_file)
+    else:
+        wellfile = pd.read_csv("./WellRates/well_rates_19_20_orig.csv", parse_dates=True, index_col = "Time",dtype=float)
+        wellfile.columns = [col.lower() for col in wellfile.columns]
     nwf = wellfile.copy()
     
     for date in dr:
@@ -172,11 +219,35 @@ if prior_sim:
             for col in diffs.columns:
                 if col in hq.index:
                     nwf.loc[date,col] -= dq.loc[col].values[0]
-                    print(dq.loc[col].values[0])
             deficit = wellfile.loc[date,dq.index].sum()-nwf.loc[date,dq.index].sum()
             deltaq, deltah = redistribute(nwf.loc[date], deficit, hq, diffs.loc[date])
             nwf.loc[date, deltaq.index] += deltaq
             diffs.loc[date, deltah.index] += deltah
-        
-    check_rates(demand_, rates_, wr, wr_ts_, restrictions)
-nwf.to_csv("./WellRates/new_well_rates.csv")
+    
+    demand = nwf.sum(axis = 1)
+    wr = pd.read_csv("./Wasserlinke/Wasserrechte ASG ab 2024.csv")
+    wr.set_index("Brunnen ", inplace = True)
+    wr.drop("BWV",axis = 0, inplace = True)
+    
+    wr_ts = pd.DataFrame()
+    for k in wr.index:
+        wr_ts[k] = np.zeros(demand.shape[0])
+    wr_ts.set_index(demand.index, inplace = True)
+    
+    
+    for k in wr.index:
+        for d in wr_ts.index:
+            wr_ts.loc[d,k] = wr.loc[k,"[m^3/Tag]"]
+
+    wr_ts['TB Entringen 1'] = wr_ts["Entringen 1 u 2"]/2
+    wr_ts['TB Poltringen 1'] = wr_ts["Poltringen 1 u 2"]/2
+    wr_ts['TB Entringen 2'] = wr_ts["Entringen 1 u 2"]/2
+    wr_ts['TB Poltringen 2'] = wr_ts["Poltringen 1 u 2"]/2
+    wr_ts.drop(["Entringen 1 u 2", "Poltringen 1 u 2"], axis = 1, inplace = True)
+    newcols = ['TB Altingen 3', 'TB Breitenholz', 'TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3',
+                     'TB Kiebingen 4', 'TB Kiebingen 5', 'TB Kiebingen 6']
+    newcols.extend(wr_ts.columns[-4:])
+    wr_ts.columns = newcols    
+    restrictions = {}
+    rates, wr_ts_withRes = check_rates(demand, nwf, wr, wr_ts, restrictions)
+rates.to_csv("./WellRates/new_well_rates.csv")

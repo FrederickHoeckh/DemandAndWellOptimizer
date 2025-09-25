@@ -443,7 +443,7 @@ dates = pd.date_range(start,end)
 d4d19 = pd.DataFrame()
 d4d19["demand"] = np.zeros(dates.shape[0])
 d4d19.set_index(dates, inplace = True)
-scenario = "mixed"
+scenario = "max"
 for date in dates:
     temp = Tavg[Tavg.index==date]["Tm"].values[0]
     dmnd = getDemand4date(pd.to_datetime(date), wpc_dic, hol, scenario = scenario, T = [temp,x_fitted])
@@ -451,4 +451,4 @@ for date in dates:
     d4d19["demand"][d4d19.index==date] = dmnd#*1.0352924526912013#*0.8978755419715864# *wpc_all/perhead["mean"].mean()*1e-3
 
 
-d4d19.to_csv("./WaterDemand/syntheticDemand_14_21.csv")
+d4d19.to_csv("./WaterDemand/syntheticDemand_14_21_max.csv")

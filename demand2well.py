@@ -337,7 +337,7 @@ if __name__ == "__main__":
     bwv = None
     start = "2014-01-01"
     end = "2021-12-31"
-    file = "./WaterDemand/syntheticDemand_14_21.csv"
+    file = "./WaterDemand/syntheticDemand_14_21_max.csv"
     # restrictions = {"TB Breitenholz":{"rate": 0, "start": "01.03.2019", "end": "29.02.2020", "year": 2025}}
     restriction = {}
     ew = pd.read_csv("./Population/EinwohnerASG_corrected.csv", index_col = "Jahr")
