@@ -226,12 +226,12 @@ def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
     frac_legal = wr_ts.div(wr_ts.sum(axis=1), axis = 0)
     
     if hq is not None and sensitivity_weight > 0:
-        sens = hq.copy()
+        sens = 1/hq.copy()
         # ensure columns match
         sens = sens.loc[frac_legal.columns]
         sens = sens / sens.sum()  # normalize
     
-        frac_weighted = (1 - sensitivity_weight) * frac_legal.values + sensitivity_weight * (frac_legal.values @ hq.values)
+        frac_weighted = (1 - sensitivity_weight) * frac_legal.values + sensitivity_weight * (frac_legal.values @ sens.values)
         frac_weighted = frac_weighted / frac_weighted.sum(axis=1)[:, None]  # normalize
         frac_weighted = pd.DataFrame(frac_weighted, index=frac_legal.index, columns=frac_legal.columns)
     else:
