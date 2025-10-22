@@ -166,7 +166,7 @@ def check_rates(demand_, rates_, wr, wr_ts_, restrictions, verbose = True, coupl
     return rates_, wr_ts_
 
 
-def demand2well(demand, restrictions):
+def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
     """
     
 
@@ -223,8 +223,21 @@ def demand2well(demand, restrictions):
                 wr_ts.loc[cond,key] = restrictions[key]["rate"]
     
     
-    frac_ts = wr_ts.div(wr_ts.sum(axis=1), axis = 0)
-    diff = frac_ts_nores - frac_ts
+    frac_legal = wr_ts.div(wr_ts.sum(axis=1), axis = 0)
+    
+    if hq is not None and sensitivity_weight > 0:
+        sens = hq.copy()
+        # ensure columns match
+        sens = sens.loc[frac_legal.columns]
+        sens = sens / sens.sum()  # normalize
+    
+        frac_weighted = (1 - sensitivity_weight) * frac_legal.values + sensitivity_weight * (frac_legal.values @ hq.values)
+        frac_weighted = frac_weighted / frac_weighted.sum(axis=1)[:, None]  # normalize
+        frac_weighted = pd.DataFrame(frac_weighted, index=frac_legal.index, columns=frac_legal.columns)
+    else:
+        frac_weighted = frac_legal
+    
+    diff = frac_ts_nores - frac_weighted
     
     rates = pd.DataFrame()
     rates["date"] = demand.index
@@ -233,15 +246,15 @@ def demand2well(demand, restrictions):
     # rates_nores = rates.copy()
     # demand = demand.div(demand.index.daysinmonth, axis = 0)
     dmnd = demand.values.transpose().squeeze()
-    for col in frac_ts.columns:
-        rates[col] = frac_ts[col].values * dmnd
+    for col in frac_weighted.columns:
+        rates[col] = frac_weighted[col].values * dmnd
         # rates_nores[col] = frac_ts_nores[col].values * dmnd
     rates, wr_ts_withRes = check_rates(demand, rates, wr, wr_ts, restrictions)
 
     return rates,  wr_ts_withRes
 
 
-def getWellRates(PopVar, scenario, start, end, restrictions, bwv = None,  unit = "m^3/d", file = None, pop = None):
+def getWellRates(PopVar, scenario, start, end, restrictions, bwv = None,  unit = "m^3/d", file = None, pop = None, hq = None):
     if file is None:
         demand = get_demand(PopVar, scenario, start, end)
     else:
@@ -278,7 +291,7 @@ def getWellRates(PopVar, scenario, start, end, restrictions, bwv = None,  unit =
         demand_after_bwv = demand-bwv_ts.values
     
     bwv_ts = pd.DataFrame(bwv_ts, index=demand.index)
-    well_rates, wr_ts = demand2well(demand_after_bwv, restrictions)
+    well_rates, wr_ts = demand2well(demand_after_bwv, restrictions, hq = hq, sensitivity_weight=0.5)
     
     # full_dates = pd.date_range(start, end, freq="D")
     # well_rates = well_rates.reindex(full_dates).fillna(method="bfill")
@@ -315,13 +328,24 @@ if __name__ == "__main__":
     bwv = None
     dr = pd.date_range(start,end,)
 
-
+    hq = pd.read_csv("./WellData/hq_sc.csv", index_col="Unnamed: 0") # Sensitivities
+    
+    nn2= ['TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3', 'TB Kiebingen 4',
+           'TB Kiebingen 5', 'TB Kiebingen 6','TB Altingen 3', 'TB Breitenholz', 'TB Entringen 1',
+           'TB Entringen 2', 'TB Poltringen 1', 'TB Poltringen 2']
+    if all(hq.index==[h.lower() for h in nn2]):
+        hq.index=nn2
+    else:
+        assert True, "sensitivity names do not match!"    
     
     restrictions = {"TB Altingen 3": {"rate": 0, "start": "01.05.2025", "end": "30.07.2025", "year": 2025},
                     "TB Breitenholz":{"rate": 0, "start": "01.05.2025", "end": "30.07.2025", "year": 2025},
                     }
                     
-    demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit)
+    demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, hq = hq)
+
+
+
 #%%             
     wellfile = pd.read_csv("./WellRates/wells_asg_swt_17_21.csv")
     wellfile["Time"]= pd.to_datetime(wellfile["Time"], format="%d.%m.%y")
@@ -378,6 +402,23 @@ if __name__ == "__main__":
         if not "TB" in col:
             wells[col] = wellfile.loc[pd.to_datetime(start):pd.to_datetime(end, dayfirst=True),col]
     wells.to_csv("./WellRates/well_rates_19_synthetic_BWV.csv")
+    wells_bwv = wells.copy()
+    demand_bwv = demand.copy()
+    # plot_stuff(wells,bwv_ts,demand,wr_ts, "BWV reduced",wells_orig.sum(axis = 1))
+    
+#%%      
+    bwv = None
+    file = None
+    start = "2022-01-01"
+    end = "2022-12-31"
+    restrictions = {}
+    demand, demand_after_bwv, wells, bwv_ts, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, file = file, pop = 123000)
+    # start = demand.index[0]
+    # end = demand.index[-1]
+    for col in wellfile.columns:
+        if not "TB" in col:
+            wells[col] = wellfile.loc[pd.to_datetime(start):pd.to_datetime(end, dayfirst=True),col]
+    wells.to_csv("./WellRates/well_rates_22_synthetic.csv")
     wells_bwv = wells.copy()
     demand_bwv = demand.copy()
     # plot_stuff(wells,bwv_ts,demand,wr_ts, "BWV reduced",wells_orig.sum(axis = 1))
