@@ -46,6 +46,23 @@ clobs.to_csv("./spatial/vobs_close_sorted.csv")
 w = gwf.wel.stress_period_data.get_data()
 cc = vgrid.xyzcellcenters
 #%%
+
+mapping = {
+    "Kiebingen1": "TB Kiebingen 1",
+    "Kiebingen2": "TB Kiebingen 2",
+    "Kiebingen3": "TB Kiebingen 3",
+    "Kiebingen4": "TB Kiebingen 4",
+    "Kiebingen5": "TB Kiebingen 5",
+    "Kiebingen6": "TB Kiebingen 6",
+    "Altingen3": "TB Altingen 3",
+    "Breitenholz": "TB Breitenholz",
+    "Entringen1": "TB Entringen 1",
+    "Entringen2": "TB Entringen 2",
+    "Poltringen1": "TB Poltringen 1",
+    "Poltringen2": "TB Poltringen 2"
+}
+
+#%%
 fig, axs = plt.subplots(3, 4, figsize=(20, 12))
 axs = axs.flatten()
 
@@ -63,10 +80,15 @@ hq_sc = np.zeros((12,12))
 hqcl_sc = np.zeros((12,12))
 names = []
 locs = {}
+
+sens= pd.DataFrame(np.zeros((vobs.shape[0],vobs.shape[0])))
+sens.index = [mapping[n].lower() for n in vobs.name]
+sens.columns = [mapping[n].lower() for n in vobs.name]
+
 for i in range(welspd.shape[0]):
     name = welspd[i][-1]
-    if "tb" in name and not "altingen 1" in name and not "altingen 2" in name:
-        if not os.path.isfile(f"GW40_{name}.hds"):
+    if "tb" in name.lower() and not "altingen 1" in name.lower() and not "altingen 2" in name.lower():
+        if not os.path.isfile(sim_ws+f"GW40_{name.lower()}.hds"):
             l,c = welspd[i][0]
             welspd[i][1]*=0.8  #reduce rate
             gwf.wel.stress_period_data.set_data({0:welspd})
@@ -76,11 +98,11 @@ for i in range(welspd.shape[0]):
             # time.sleep(10)
             hds = gwf.output.head().get_data()
             current_file_name = sim_ws+"GW40.hds"
-            new_file_name = sim_ws+f"GW40_{name}.hds"
+            new_file_name = sim_ws+f"GW40_{name.lower()}.hds"
             time.sleep(1)
             os.rename(current_file_name, new_file_name)
         else:
-            hds = flopy.utils.HeadFile(f"GW40_{name}.hds").get_data()
+            hds = flopy.utils.HeadFile(sim_ws+f"GW40_{name.lower()}.hds").get_data()
         
         l,c = welspd[i][0]        
         dq = welspd[i][1]*0.2
@@ -95,8 +117,8 @@ for i in range(welspd.shape[0]):
         
         for v in range(vobs.shape[0]):
             lay,cel = vobs.loc[v,"layer"], vobs.loc[v,"cell"]
-            h0 = hds0[lay,:,cel][0]
-            h1 = hds[lay,:,cel][0]
+            h0 = hds0[lay,0,cel]
+            h1 = hds[lay,0,cel]
             hq[v,ax_idx] = round(h1-h0,4)
             hq_sc[v,ax_idx] = round((h1-h0)/abs(dq),8)
             lay,cel = clobs.loc[v,"layer"], clobs.loc[v,"cell"]
@@ -104,7 +126,7 @@ for i in range(welspd.shape[0]):
             h1 = hds[lay,:,cel][0]
             hqcl[v,ax_idx] = round(h1-h0,4)
             hqcl_sc[v,ax_idx] = round((h1-h0)/abs(dq),8)
-        
+            sens.loc[name, mapping[vobs.loc[v,"name"]].lower()] = round((h1-h0)/abs(dq),8)
         ax = axs[ax_idx]
         ax_idx+=1
         
@@ -132,10 +154,11 @@ for i in range(welspd.shape[0]):
 # cbar_ax = fig.add_axes([0.2, -0.05, 0.6, 0.02])  
 # cbar = fig.colorbar(im, ax=cbar_ax, orientation="horizontal", fraction=0.05, pad=0.1)
 plt.tight_layout()
+plt.savefig("./img/wellheaddiffs.png")
 plt.show()
 
 
-plt.savefig("./img/wellheaddiffs.png")
+
 
 #%%
 vobs_xy = []

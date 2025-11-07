@@ -180,6 +180,9 @@ end = "2020-10-31"
 dr = pd.date_range(start,end,)
 prior_sim = True
 useWelFile = True
+override_limits = True # Flag that indicates if legal limits can be exceeded, specify 0<"buffer"<1
+buffer = 0.2
+
 
 nn = ['Kiebingen1', 'Kiebingen2', 'Kiebingen3', 'Kiebingen4', 'Kiebingen5',
        'Kiebingen6', 'Altingen3', 'Breitenholz', 'Entringen1', 'Entringen2',
@@ -190,16 +193,17 @@ nn2= ['TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3', 'TB Kiebingen 4',
 nn = pd.DataFrame([nn,nn2]).transpose()
 nn.set_index(0,inplace = True)
 if prior_sim:
-    vobs = pd.read_csv("./spatial/vobs_sorted.csv") 
-    thr = pd.read_csv("./WellData/wellThresholds_2.csv")
+    vobs = pd.read_csv("./spatial/vobs_close_sorted.csv") 
+    thr = pd.read_csv("./WellData/thresholds.csv")
     # Check headfile for virtual observers -> thresholds exceeded?
    
-    hq = pd.read_csv("./WellData/hq_sc.csv", index_col="Unnamed: 0") # Sensitivities
+    hq = pd.read_csv("./WellData/hqcl_sc.csv", index_col="Unnamed: 0") # Sensitivities
     obs,flags,diffs = check_heads(start,end,vobs,thr)
     diffs.columns = hq.index
     if useWelFile:
         wel_file = "./model/GW40_0.wel"
         wellfile = translateWel2Df(wel_file)
+        oldrates = wellfile.copy()
     else:
         wellfile = pd.read_csv("./WellRates/well_rates_19_20_orig.csv", parse_dates=True, index_col = "Time",dtype=float)
         wellfile.columns = [col.lower() for col in wellfile.columns]
@@ -247,7 +251,22 @@ if prior_sim:
     newcols = ['TB Altingen 3', 'TB Breitenholz', 'TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3',
                      'TB Kiebingen 4', 'TB Kiebingen 5', 'TB Kiebingen 6']
     newcols.extend(wr_ts.columns[-4:])
-    wr_ts.columns = newcols    
+    wr_ts.columns = [s.lower() for s in newcols]  
     restrictions = {}
-    rates, wr_ts_withRes = check_rates(demand, nwf, wr, wr_ts, restrictions)
+    if override_limits: 
+        excess = (True,None)
+        while excess[0]:
+            rates, wr_ts_withRes, excess = check_rates(demand, nwf, wr, wr_ts, restrictions)
+            exc = excess[1]
+            capacity = diffs/np.diag(hq)
+            for i in range(exc.shape[0]):
+                if exc[i]:
+                    date = dr[i]
+                    cap = capacity.loc[date]
+                    wellincr = cap.idxmax()
+                    wr_ts.loc[date,wellincr] *= (1+buffer)
+                    
+    else:
+        rates, wr_ts_withRes, _ = check_rates(demand, nwf, wr, wr_ts, restrictions)
+        
 rates.to_csv("./WellRates/new_well_rates.csv")

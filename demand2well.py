@@ -161,9 +161,11 @@ def check_rates(demand_, rates_, wr, wr_ts_, restrictions, verbose = True, coupl
             val = diff.min()
             print(f"Legal limits exceeded by up to {val} $m^3/d$")
             print(f"in at least one month in {yr}")
+            excess = (True, wr_ts_.sum(axis=1).sub(demand_.T).T.values<0)
         else:
             print("Everything within limits")
-    return rates_, wr_ts_
+            excess = (False, None)
+    return rates_, wr_ts_, excess
 
 
 def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
@@ -249,7 +251,7 @@ def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
     for col in frac_weighted.columns:
         rates[col] = frac_weighted[col].values * dmnd
         # rates_nores[col] = frac_ts_nores[col].values * dmnd
-    rates, wr_ts_withRes = check_rates(demand, rates, wr, wr_ts, restrictions)
+    rates, wr_ts_withRes, _ = check_rates(demand, rates, wr, wr_ts, restrictions)
 
     return rates,  wr_ts_withRes
 

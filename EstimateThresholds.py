@@ -187,7 +187,7 @@ fig.suptitle(how)
 for i, ax in enumerate(axs.flatten()):
     n = vobs.loc[i,"name"]
     name = mapping[n]
-    names.append(name)
+    names.append(n)
     print(name)
     if "Altingen" in n:
         obsname = n[:-1]
@@ -261,8 +261,11 @@ plt.savefig(f"./img/{how}.png", bbox_inches='tight', dpi=300)
 plt.show()
 
 out = pd.DataFrame()
-out["Well"] = names
-out["thrs"] = thresholds
+out["name"] = names
+out["redflag"] = thresholds
+out["yellowflag"] = thresholds
+out["yellowflag"] += 0.2
+
 out.to_csv("./WellData/thresholds.csv")
 #%% 
 fig,ax = plt.subplots(figsize = (9,6), dpi = 300)
