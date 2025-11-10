@@ -263,7 +263,10 @@ output:
 	delta: difference in pumping rates
 	deltah: estimated new difference to threshold
 
-  
+flags: 
+override_limits: allows to override legal limits (Wasserrechte). If true the script computes the remaining "capacity" (=dh/sensitivity) and increases the limits for the well with 
+			the highest capacity by the computed capacity*buffer 
+		buffer is specified to dampen increase of extraction limits (0: no increase, 1: full capacity increase
 
 ###================================================================================================================###
 

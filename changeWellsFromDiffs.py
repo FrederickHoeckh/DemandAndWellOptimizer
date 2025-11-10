@@ -181,7 +181,7 @@ dr = pd.date_range(start,end,)
 prior_sim = True
 useWelFile = True
 override_limits = True # Flag that indicates if legal limits can be exceeded, specify 0<"buffer"<1
-buffer = 0.2
+buffer = 0.5
 
 
 nn = ['Kiebingen1', 'Kiebingen2', 'Kiebingen3', 'Kiebingen4', 'Kiebingen5',
@@ -254,9 +254,8 @@ if prior_sim:
     wr_ts.columns = [s.lower() for s in newcols]  
     restrictions = {}
     if override_limits: 
-        excess = (True,None)
+        rates, wr_ts_withRes, excess = check_rates(demand, nwf, wr, wr_ts, restrictions) 
         while excess[0]:
-            rates, wr_ts_withRes, excess = check_rates(demand, nwf, wr, wr_ts, restrictions)
             exc = excess[1]
             capacity = diffs/np.diag(hq)
             for i in range(exc.shape[0]):
@@ -264,8 +263,8 @@ if prior_sim:
                     date = dr[i]
                     cap = capacity.loc[date]
                     wellincr = cap.idxmax()
-                    wr_ts.loc[date,wellincr] *= (1+buffer)
-                    
+                    wr_ts.loc[date,wellincr] += capacity*buffer
+            rates, wr_ts_withRes, excess = check_rates(demand, nwf, wr, wr_ts, restrictions) 
     else:
         rates, wr_ts_withRes, _ = check_rates(demand, nwf, wr, wr_ts, restrictions)
         

@@ -1,0 +1,13 @@
+name,layer,cell
+Kiebingen1,0,64572 
+Kiebingen3,0,64608 
+Kiebingen2,0,63887 
+Kiebingen4,0,63226 
+Kiebingen5,0,62385 
+Kiebingen6,0,61658 
+Poltringen2,8,36194 
+Poltringen1,8,36137 
+Entringen2,8,29545 
+Entringen1,8,29526
+Breitenholz,8,18323 
+Altingen3,8,23755 

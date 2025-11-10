@@ -1,0 +1,18 @@
+ixs = flopy.utils.GridIntersect(vgrid, method = "vertex")
+
+vobs = gpd.read_file("../wells/virtual_observer.shp")
+vobs_cl = gpd.read_file("../wells/virtual_observer_close.shp")
+
+with open("vobs.csv","w") as vo, open("vobs_close.csv","w") as voc:
+    vo.write("name,layer,cell \n")
+    voc.write("name,layer,cell \n")
+    for i in range(vobs.shape[0]):
+        cell = ixs.intersect(Point(vobs.loc[i,"geometry"].x,vobs.loc[i,"geometry"].y)).cellids[0]
+        cell_cl = ixs.intersect(Point(vobs_cl.loc[i,"geometry"].x,vobs_cl.loc[i,"geometry"].y)).cellids[0]
+        name = vobs.loc[i,"Name"]
+        if "Kiebingen" in name:
+            layer = 0 
+        else:
+            layer = 8
+        vo.write(f"{name},{layer},{cell} \n")
+        voc.write(f"{name},{layer},{cell_cl} \n")
