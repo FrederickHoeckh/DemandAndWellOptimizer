@@ -253,6 +253,7 @@ if prior_sim:
     newcols.extend(wr_ts.columns[-4:])
     wr_ts.columns = [s.lower() for s in newcols]  
     restrictions = {}
+    alreadyIncr = []
     if override_limits: 
         rates, wr_ts_withRes, excess = check_rates(demand, nwf, wr, wr_ts, restrictions) 
         while excess[0]:
@@ -262,8 +263,12 @@ if prior_sim:
                 if exc[i]:
                     date = dr[i]
                     cap = capacity.loc[date]
-                    wellincr = cap.idxmax()
-                    wr_ts.loc[date,wellincr] += capacity*buffer
+                    wellincr = cap.nlargest(5).index
+                    for i in range(wellincr.shape[0]):
+                        if wellincr[i] not in list(restrictions.keys()) and wellincr[i] not in alreadyIncr:
+                            wr_ts.loc[date,wellincr] += capacity*buffer
+                            alreadyIncr.append(wellincr)
+                            break
             rates, wr_ts_withRes, excess = check_rates(demand, nwf, wr, wr_ts, restrictions) 
     else:
         rates, wr_ts_withRes, _ = check_rates(demand, nwf, wr, wr_ts, restrictions)
