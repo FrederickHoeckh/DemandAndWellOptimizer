@@ -12,8 +12,80 @@ import re
 from scipy.optimize import linprog
 from demand2well import PoEn, check_rates
 
-def check_heads(start,end,vobs,thr):
-    hdsfile = flopy.utils.binaryfile.HeadFile("./model/GW40.hds")
+
+
+def update_wel_from_dataframe(template_wel_path, wellfile, output_path):
+    """
+    Create a new MODFLOW 6 WEL file with one period per row in 'wellfile'.
+    Keeps all entries from the original file, replacing only values where
+    the well name matches a column in 'wellfile'.
+    """
+    with open(template_wel_path, "r") as f:
+        template_lines = f.readlines()
+
+    # Find the lines that define well entries (with a regex)
+    wel_line_pattern = re.compile(
+        r'^\s*(\d+)\s+(\d+)\s+([-+]?\d*\.?\d+(?:[Ee][-+]?\d+)?)\s+("?[\w\s\.-]+"?)'
+    )
+
+    # Identify which lines belong to each period
+    period_blocks = []
+    current_block = []
+    for line in template_lines:
+        if line.strip().startswith("BEGIN period"):
+            current_block = [line]
+        elif line.strip().startswith("END period"):
+            current_block.append(line)
+            period_blocks.append(current_block)
+            current_block = []
+        else:
+            if current_block is not None:
+                current_block.append(line)
+
+    # Build output WEL file
+    header = []
+    # Everything before the first period is header
+    for line in template_lines:
+        if line.strip().startswith("BEGIN period"):
+            break
+        header.append(line)
+
+    output_lines = []
+    output_lines.extend(header)
+
+    # Iterate over each period = each row in DataFrame
+    for i, (date, row) in enumerate(wellfile.iterrows(), start=1):
+        # Use template of first period as base
+        template_period = period_blocks[0]
+        new_period = []
+
+        # Replace BEGIN line
+        new_period.append(f"BEGIN period  {i}\n")
+
+        for line in template_period[1:-1]:  # skip BEGIN/END
+            m = wel_line_pattern.match(line)
+            if m:
+                layer, cell, old_val, name = m.groups()
+                name_clean = name.strip().lower().replace('"', '')
+                if name_clean in [c.lower() for c in wellfile.columns]:
+                    q = row[[c for c in wellfile.columns if c.lower() == name_clean][0]]
+                    line = f"  {layer} {cell} {-q: .8E} {name}\n"
+                new_period.append(line)
+            
+
+        # Add END line
+        new_period.append(f"END period  {i}\n\n")
+
+        output_lines.extend(new_period)
+
+    # Write new file
+    with open(output_path, "w") as f:
+        f.writelines(output_lines)
+
+
+
+def check_heads(start,end,vobs,thr,filepath):
+    hdsfile = flopy.utils.binaryfile.HeadFile(filepath)
     times = hdsfile.get_times()
 
     thr.set_index("name", inplace = True)
@@ -60,8 +132,6 @@ def check_heads(start,end,vobs,thr):
         plt.tight_layout()
         plt.show()
     return obs, flags, diffs
-
-
 
 
 def optimize_pumping_diff(
@@ -129,12 +199,11 @@ def optimize_pumping_diff(
 def redistribute(nwf, deficit, hq, newdiffs):
     fracs = newdiffs/newdiffs.sum()
     delta = fracs*deficit
-    deltah = delta @hq
+    deltah = delta @(hq)
     newdiffs-=deltah
     return delta, deltah
 
 def translateWel2Df(wel_file):
-    wel_file = "./model/GW40_0.wel"
     records = []
     period = None
     
@@ -176,13 +245,23 @@ def translateWel2Df(wel_file):
 #%%
 
 start = "2019-11-01"
-end = "2020-10-31"
+end = "2019-11-30"
 dr = pd.date_range(start,end,)
+
+
+s = "2019-11-18"
+e = "2019-11-24"
+drc = pd.date_range(s,e)
+
+writeNewFiles = True # if true, new wel and nam file are written
 prior_sim = True
 useWelFile = True
 override_limits = True # Flag that indicates if legal limits can be exceeded, specify 0<"buffer"<1
 buffer = 0.5
 
+wel_file = "./Transient_welSimOpt/GW40_0.wel"
+fp = "./Transient_welSimOpt/GW40_beforeOpt.hds"
+# fp = "./Transient_welSimOpt/GW40_beforeOpt.hds"
 
 nn = ['Kiebingen1', 'Kiebingen2', 'Kiebingen3', 'Kiebingen4', 'Kiebingen5',
        'Kiebingen6', 'Altingen3', 'Breitenholz', 'Entringen1', 'Entringen2',
@@ -192,16 +271,26 @@ nn2= ['TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3', 'TB Kiebingen 4',
        'TB Entringen 2', 'TB Poltringen 1', 'TB Poltringen 2']
 nn = pd.DataFrame([nn,nn2]).transpose()
 nn.set_index(0,inplace = True)
+restrictions = {
+                "TB Altingen 3": {"rate": 0, "start": "02.11.2025", "end": "30.11.2019", "year": 2019},
+                "TB Breitenholz":{"rate": 0, "start": "02.11.2025", "end": "30.11.2019", "year": 2019},
+                "TB Kiebingen 5":{"rate": 0, "start": "02.11.2025", "end": "30.11.2019", "year": 2019},
+                }
 if prior_sim:
     vobs = pd.read_csv("./spatial/vobs_close_sorted.csv") 
     thr = pd.read_csv("./WellData/thresholds.csv")
     # Check headfile for virtual observers -> thresholds exceeded?
    
-    hq = pd.read_csv("./WellData/hqcl_sc.csv", index_col="Unnamed: 0") # Sensitivities
-    obs,flags,diffs = check_heads(start,end,vobs,thr)
+    hq = pd.read_csv("./WellData/hqcl_sc.csv", index_col="Unnamed: 0")
+    hq *= np.eye(len(hq))# Sensitivities
+    
+    obs,flags,diffs = check_heads(start,end,vobs,thr,filepath = fp)
+    diffs0 = diffs.copy()
+    # diffs[diffs<0.5] = 0
+    # obs1,flags1,diffs1 = check_heads(start,end,vobs,thr,filepath = "./TransientModel/GW40_beforeOpt.hds")
     diffs.columns = hq.index
+    olddiffs = diffs.copy()
     if useWelFile:
-        wel_file = "./model/GW40_0.wel"
         wellfile = translateWel2Df(wel_file)
         oldrates = wellfile.copy()
     else:
@@ -214,20 +303,27 @@ if prior_sim:
         # Yes --> check diference to threshold, compute delta Q from hq-Matrix, redistribute 
         iteration = 1
         while any(diffs.loc[date] < -1e-6):   # Optimization with tolerance of 1 Liter
-            print(iteration)
             iteration+=1
-            out = optimize_pumping_diff(hq, diffs.loc[date], buffer = 0)
+            out = optimize_pumping_diff(hq, diffs.loc[date], buffer = buffer)
             diffs.loc[date] = out["diff_new"]
+            for key in restrictions.keys():
+                if pd.to_datetime(restrictions[key]["start"],dayfirst = True)<=date and pd.to_datetime(restrictions[key]["end"],dayfirst = True) >= date:
+                    diffs.loc[date,key.lower()] = 0
+            diffs.loc[date] = diffs.loc[date].where(diffs.loc[date].isin(diffs.loc[date].nlargest(3)),0)
             dq = out["res"].x
             dq = pd.DataFrame(dq, index = hq.index)
             for col in diffs.columns:
                 if col in hq.index:
                     nwf.loc[date,col] -= dq.loc[col].values[0]
+            
             deficit = wellfile.loc[date,dq.index].sum()-nwf.loc[date,dq.index].sum()
-            deltaq, deltah = redistribute(nwf.loc[date], deficit, hq, diffs.loc[date])
+            deltaq, deltah = redistribute(nwf.loc[date], deficit, hq*1.2, diffs.loc[date])
             nwf.loc[date, deltaq.index] += deltaq
             diffs.loc[date, deltah.index] += deltah
-    
+            # if date in drc:
+            #     print(date)
+            #     print(dq)
+            #     print(deltaq)
     demand = nwf.sum(axis = 1)
     wr = pd.read_csv("./Wasserlinke/Wasserrechte ASG ab 2024.csv")
     wr.set_index("Brunnen ", inplace = True)
@@ -252,7 +348,7 @@ if prior_sim:
                      'TB Kiebingen 4', 'TB Kiebingen 5', 'TB Kiebingen 6']
     newcols.extend(wr_ts.columns[-4:])
     wr_ts.columns = [s.lower() for s in newcols]  
-    restrictions = {}
+    
     alreadyIncr = []
     if override_limits: 
         rates, wr_ts_withRes, excess = check_rates(demand, nwf, wr, wr_ts, restrictions) 
@@ -274,3 +370,26 @@ if prior_sim:
         rates, wr_ts_withRes, _ = check_rates(demand, nwf, wr, wr_ts, restrictions)
         
 rates.to_csv("./WellRates/new_well_rates.csv")
+path = "./Transient_welSimOpt/"
+oldwelfile = "gw40_0.wel"
+newwelfile = "GW40_opt.wel"
+update_wel_from_dataframe(
+    template_wel_path=path+oldwelfile,
+    wellfile=rates,
+    output_path=path+newwelfile
+)
+if writeNewFiles:
+    with open(path+"GW40.nam", "r") as nam:
+        lines = nam.readlines()
+        
+    with open(path+"GW40.nam", "w") as nam:    
+        for line in lines:
+            if oldwelfile in line:
+                l = line.split()
+                l[1] = newwelfile
+                newline = "  "+l[0]+"  "+l[1]+"  "+l[2]+"  \n"
+            else:
+                newline = line
+            nam.write(newline)
+            
+            

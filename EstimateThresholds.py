@@ -93,8 +93,10 @@ sim_ws = "./TransientModel/"
 sim_name = "mfsim.nam"
 sim = flopy.mf6.MFSimulation.load(sim_ws=sim_ws,sim_name=sim_name)
 gwf = sim.get_model()
-hdsfile = gwf.output.head()
-
+filepath = "./TransientModel/GW40_beforeOpt.hds"
+hdsfile = flopy.utils.binaryfile.HeadFile(filepath)
+filepathOpt = "./TransientModel/GW40.hds"
+hdsfileOpt = flopy.utils.binaryfile.HeadFile(filepathOpt)
 times = hdsfile.get_times()
 wel = gwf.wel.stress_period_data.get_data()
 
@@ -126,6 +128,7 @@ mobsdf.columns = grabobs.columns
 mobsdf.set_index(dr, inplace = True)
 obsdf = mobsdf.copy()
 vobsdf = mobsdf.copy()
+vobsdf_opt = mobsdf.copy()
 for t in times:
     date = dr[int(t-1)]
     hds = hdsfile.get_data(kstpkper = (0,t-1))
@@ -146,12 +149,17 @@ vobs.drop("Unnamed: 0", axis = 1, inplace = True)
 vobsdf.columns = [n for n in vobs.name]
 vobsdf.set_index(dr, inplace = True)
 
+vobsdf_opt.columns = [n for n in vobs.name]
+vobsdf_opt.set_index(dr, inplace = True)
+
 for t,date in enumerate(dr):
     for j in range(vobs.shape[0]):
         hds = hdsfile.get_data(kstpkper = (0,t))
+        hdsOpt = hdsfileOpt.get_data(kstpkper = (0,t))
         n = vobs.loc[j,"name"]
         l,c = vobs.loc[j,"layer"],vobs.loc[j,"cell"]
-        vobsdf.loc[date,n] = hds[l,:,c][0]       
+        vobsdf.loc[date,n] = hds[l,:,c][0]
+        vobsdf_opt.loc[date,n] = hdsOpt[l,:,c][0]
         
 
 #%%
@@ -171,9 +179,9 @@ mapping = {
     "Poltringen2": "TB Poltringen 2"
 }
 
-original_thrs = pd.read_csv("./WellData/ActiveWellsMetaData.csv", index_col = "NAME")[:-3].TOPSCR
-wsnt = pd.read_csv("../obs/WS_NT_wells.csv", parse_dates = True, index_col = "Datum")
-wsat = pd.read_csv("../obs/WS_AT_wells.csv", parse_dates = True, index_col = "Datum")  
+original_thrs = pd.read_csv("./WellData/ActiveWellsMetaData_TOPSCREENadapt.csv", index_col = "NAME")[:-3].TOPSCR
+wsnt = pd.read_csv("./obs/WS_NT_wells.csv", parse_dates = True, index_col = "Datum")
+wsat = pd.read_csv("./obs/WS_AT_wells.csv", parse_dates = True, index_col = "Datum")  
 
 #%%
 hows = ["mean","min","first"]
@@ -220,14 +228,30 @@ for i, ax in enumerate(axs.flatten()):
     
     vobsdf[n].plot(ax=ax, label = "Sim h @ virtual obs.", color = "orange", alpha = 0.7)
     ax.hlines(original_thrs[name.lower()],0,1e6, color = "black", label = "Orig. Threshold", linestyle = "--")
-    if how in hows:
-        new_threshold = original_thrs[name.lower()]-dh
+    try:
+        cond = all(np.isnan(wsnt[obsname]))
+    except KeyError:
+        cond = all(np.isnan(wsat[obsname]))
+    if not cond:
+        if how in hows:
+            new_threshold = original_thrs[name.lower()]-dh
+        else:
+            ymeas = wellobs < original_thrs[name.lower()]
+            if ymeas.sum() > 0:   
+                new_threshold, metrics_df = choose_threshold_from_scores(vobsdf[n], ymeas, metric="mismatch", return_all=True)
+                dh = new_threshold - original_thrs
+            else:
+                try:
+                    dh = (wsnt[obsname]-vobsdf[n]).mean()
+                except KeyError:
+                    dh = (wsat[obsname]-vobsdf[n]).mean()
+                new_threshold = original_thrs[name.lower()] + dh
+        
+        
     else:
-        ymeas = wellobs < original_thrs[name.lower()]
-        new_threshold, metrics_df = choose_threshold_from_scores(vobsdf[n], ymeas, metric="mismatch", return_all=True)
-        dh = new_threshold - original_thrs
-    thresholds.append(new_threshold)
-    
+        new_threshold = original_thrs[name.lower()]
+        dh = 0
+    thresholds.append(new_threshold)    
     ax.hlines(new_threshold,0,1e6, color = "green", label = "Sim. Threshold", linestyle = "--")
     x = vobsdf.index
     y = vobsdf[n]        
@@ -241,7 +265,7 @@ for i, ax in enumerate(axs.flatten()):
     ax.fill_between(x, ylim[0] + dy/2, ylim[1],
             where=(y < new_threshold),
             color="lightgreen", alpha=0.3, label="Below sim. thr.")     
-    print(round(original_thrs[name.lower()],2), round(new_threshold,2), round(dh[name.lower()],2))
+    print(round(original_thrs[name.lower()],2), round(new_threshold,2))
     ax2 = ax.twinx()
     ax2.plot(wr[name.lower()], color = "grey", alpha = 0.3, label = "Q")
     ax.set_title(name)
@@ -265,7 +289,7 @@ out["name"] = names
 out["redflag"] = thresholds
 out["yellowflag"] = thresholds
 out["yellowflag"] += 0.2
-
+out.set_index("name",inplace = True)
 out.to_csv("./WellData/thresholds.csv")
 #%% 
 fig,ax = plt.subplots(figsize = (9,6), dpi = 300)
@@ -351,4 +375,66 @@ ax.legend(handles, labels,
 plt.tight_layout()
 
 plt.savefig(f"./img/Poltringen_2.png", bbox_inches='tight', dpi=300)
+plt.show()
+
+#%%
+
+fig,axs = plt.subplots(3,4,figsize = (18,12), dpi = 300)
+fig.suptitle(how)
+for i, ax in enumerate(axs.flatten()):
+    n = vobs.loc[i,"name"]
+    name = mapping[n]
+    names.append(n)
+    new_threshold = out.loc[n,"redflag"]
+    print(name)
+    if "Altingen" in n:
+        obsname = n[:-1]
+    elif "Poltringen" in n:
+        obsname = "RWB_"+n
+    else:
+        obsname = n
+    # if obsname in wsat.columns:
+    #     wsat[obsname].plot(ax=ax,color = "blue", label = "h measured", alpha = 0.7)
+    #     wellobs = wsat[obsname]
+    # else:
+    #     wsnt[obsname].plot(ax=ax,color = "blue", label = "h measured", alpha = 0.7)
+    #     wellobs = wsnt[obsname]
+    
+    vobsdf[n].plot(ax=ax, label = "Sim h @ virtual obs.", color = "orange", alpha = 0.7)
+    vobsdf_opt[n].plot(ax=ax, label = "Sim h @ virtual obs.", color = "blue", alpha = 0.7)
+    
+    ax.hlines(new_threshold,0,1e6, color = "green", label = "Sim. Threshold", linestyle = "--")
+    x = vobsdf.index
+    y = vobsdf[n]        
+    ylim = ax.get_ylim()
+    dy = ylim[1]-ylim[0]
+    
+    # Fill where below new threshold
+    ax.fill_between(x,  ylim[0], ylim[0] + dy/2,
+            where=(vobsdf_opt[n] < new_threshold),
+            color="lightcoral", alpha=0.3, label="Below orig. thr.")     
+    
+    ax.fill_between(x, ylim[0] + dy/2, ylim[1],
+            where=(y < new_threshold),
+            color="lightgreen", alpha=0.3, label="Below sim. thr.")     
+
+    
+    ax2 = ax.twinx()
+    ax2.plot(wr[name.lower()], color = "grey", alpha = 0.3, label = "Q")
+    
+    
+    ax.set_title(name)
+    if i in [0,4,8]:
+        ax.set_ylabel("h [mNN]")
+    elif i in [3,7,11]:
+        ax2.set_ylabel("Q [m$^3$/d]")
+    if i in [8,9,10,11]:
+        ax.set_xlabel("Date")
+plt.tight_layout()
+lines_1, labels_1 = ax.get_legend_handles_labels()
+lines_2, labels_2 = ax2.get_legend_handles_labels()
+fig.legend(lines_1 + lines_2, labels_1 + labels_2, loc='lower center',
+       bbox_to_anchor=(0.5, -0.02),   # slightly below the figure
+       ncol=7)
+plt.savefig(f"./img/{how}.png", bbox_inches='tight', dpi=300)
 plt.show()
