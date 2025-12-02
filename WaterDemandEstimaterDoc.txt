@@ -224,6 +224,16 @@ Script: "changeWellsFromDiffs.py"
 used in postprocessing of simulations. Reads virtual observers, thresholds, sensitivities for wells, well rates that are used in the simulation. 
 Start and end date must be specified and must match simulation period
 
+WORKFLOW prior to simulations when a new model is used:
+0. Define a model
+1. Run a long simulation with original pumping rates, daily resolution (Water levels in wells available from 01.01.2019-31.12.2020)
+2. Define virtual observer cells (best match between model and measurements in or around wells), so far only visual check
+	it works to start in the well cell and compare and move up the cell numbers up to well_cell + 10 and pick the cell with the best match)
+3. Run script "EstimateThresholds.py" to estimate model thresholds that best represent the "real-world" thresholds - Visual control is VITAL!!!
+4. (optional) run script "changeWellsFromDiffs.py" with the simulation from step 1. to check if everything works as intended.
+
+(02.12.2025 The above workflow is fully tested! FH)
+
 Assumption: water level and well rate are related linearly
 
 call function check_heads --> returns virtual observations, flags (indicator if thresholds are exceeded), and diffs (difference between threshold and virtual observation)
