@@ -163,7 +163,7 @@ def getDemand4date(date, wpc_dic, hol, scenario = "mid", T = None):
             else:
                 dmd = wpc_dic["max_hol"]
     elif scenario == "mixed":
-        a = np.random.random(1)[0]
+        a = np.random.uniform(0.5, 1)
         b = 1-a
         if doy >= wpc_dic["summer_doy"][0] and doy <= wpc_dic["summer_doy"][1]: #summer before holiday condition
             base = (a*wpc_dic["avg_summer"] + b*wpc_dic["max_summer"])
@@ -211,7 +211,7 @@ def plot_doy_wpc_w_guess(perhead,hol,wpc_dic, x_fitted, plot_T = False, Tavg = N
     #         'size'   : 22}
 
     # matplotlib.rc('font', **font)
-    ax.plot(all_doym.index, all_doym*1000, linewidth = 2, alpha = .4)
+    ax.plot(all_doym.index, all_doym*1000, linewidth = 2, alpha = .4, label = "Real PC Demand")
     dates = all_doym.index.values
     # for i in range(hol.shape[0]):
     #     ax.fill_betweenx(y = [0,150], x1 = hol["vdoy"][i], x2 = hol["bdoy"][i], color = "green", alpha = .07)
@@ -222,14 +222,14 @@ def plot_doy_wpc_w_guess(perhead,hol,wpc_dic, x_fitted, plot_T = False, Tavg = N
     d4d.set_index("date",inplace = True)
     if True:
         ax2 = ax.twinx()
-        ax2.plot(all_doym.index, Tavg["Tm"], color = "red", linewidth = 3, alpha = .2)
+        ax2.plot(all_doym.index, Tavg["Tm"], color = "red", linewidth = 3, alpha = .2, label = "Temperature")
         ax2.set_ylabel("Temperatur [°C]")
     for date in dates:
         temp = Tavg[Tavg.index==date]["Tm"].values[0]
         
         d4d["demand"][d4d.index==date] = getDemand4date(pd.to_datetime(date), wpc_dic, hol, scenario = scenario, T = [temp,x_fitted])
         # print(getDemand4date(date, wpc_dic, hol, scenario = "mid", T = [temp,x_fitted]))
-    ax.scatter(d4d.index, d4d*1000, color = "black", s = 2)
+    ax.scatter(d4d.index, d4d*1000, color = "black", s = 2, label = "Estimated PC Demand")
     res = all_doym.values*1000-d4d.demand.values*1000
     var = np.var(res,ddof=1)
     start = pd.to_datetime("01.01.2021", dayfirst = True)
@@ -239,7 +239,8 @@ def plot_doy_wpc_w_guess(perhead,hol,wpc_dic, x_fitted, plot_T = False, Tavg = N
     n = len(all_doym)
     t_critical = stats.t.ppf(1 - alpha / 2, df=n-2)
     prediction_interval = t_critical * np.sqrt(var) * np.sqrt(1 + 1/n)
-    
+    ax.legend(loc="upper left")
+    ax2.legend(loc="upper right")
     # print("qdjkofsfha")
     # X = ax.xaxis
     # ax.set_xlabel("Day of Year", fontsize = 14)

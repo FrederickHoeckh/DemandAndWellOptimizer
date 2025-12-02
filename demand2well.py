@@ -74,7 +74,7 @@ def check_rates(demand_, rates_, wr, wr_ts_, restrictions, verbose = True, coupl
         if any(wr_ts_.sum(axis=1).sub(demand_.T).T.values<0):
             idx = np.where(wr_ts_.sum(axis=1).sub(demand_.T).T<0)
             diff = wr_ts_.sum(axis=1).sub(demand_.T).T
-            val = round(diff.min().iloc[0],2)
+            val = round(diff.min(),2) #.iloc[0]
             print(f"Legal limits exceeded: {val} [$m^3/d$]")
         else:
             print("Everything within limits")
@@ -340,8 +340,8 @@ if __name__ == "__main__":
     else:
         assert True, "sensitivity names do not match!"    
     
-    restrictions = {"TB Altingen 3": {"rate": 0, "start": "01.05.2025", "end": "30.07.2025", "year": 2025},
-                    "TB Breitenholz":{"rate": 0, "start": "01.05.2025", "end": "30.07.2025", "year": 2025},
+    restrictions = {"TB Altingen 3": {"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2025},
+                    "TB Breitenholz":{"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2025},
                     }
                     
     demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, hq = hq)
