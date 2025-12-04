@@ -349,6 +349,7 @@ if __name__ == "__main__":
     end = "2020-10-31"
     unit = "m^3/d"
     bwv = None
+    useResFile = True
     resFileName = None
     resFileUnits = "m3/s" # "l/s", "m3/s", "m3/d"
     
@@ -367,7 +368,7 @@ if __name__ == "__main__":
     extrLimits_path = "./ExtractionLimits/"
     resFiles = os.listdir(extrLimits_path)
     
-    if len(resFiles)>0:
+    if len(resFiles)>0 and useResFile:
         if resFileName is None:
             resFileName = resFiles[0]
         wr_ts = pd.read_csv(extrLimits_path+resFileName, index_col = "date",parse_dates=True)

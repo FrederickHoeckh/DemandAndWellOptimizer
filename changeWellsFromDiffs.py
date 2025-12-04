@@ -9,6 +9,7 @@ import numpy as np
 import pickle
 import flopy
 import re
+import os
 from scipy.optimize import linprog
 from demand2well import PoEn, check_rates
 
@@ -509,6 +510,11 @@ start = "2019-11-01"
 end = "2020-10-31"
 dr = pd.date_range(start,end,)
 
+extrLimits_path = "./ExtractionLimits/"
+resFiles = os.listdir(extrLimits_path)
+resFileUnits = "m3/s" # "l/s", "m3/s", "m3/d"
+useResFile = True
+resFileName = None
 
 s = "2019-11-18"
 e = "2019-11-24"
@@ -542,46 +548,63 @@ nn2= ['TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3', 'TB Kiebingen 4',
        'TB Entringen 2', 'TB Poltringen 1', 'TB Poltringen 2']
 nn = pd.DataFrame([nn,nn2]).transpose()
 nn.set_index(0,inplace = True)
-restrictions = {
-                # "TB Altingen 3": {"rate": 0, "start": "02.11.2019", "end": "30.11.2019", "year": 2019},
-                # "TB Breitenholz":{"rate": 0, "start": "02.11.2019", "end": "30.11.2019", "year": 2019},
-                # "TB Kiebingen 5":{"rate": 0, "start": "02.11.2019", "end": "30.11.2019", "year": 2019},
-                }
 
-restrictions = {k.lower(): v for k, v in restrictions.items()}
-wr = pd.read_csv("./Wasserlinke/Wasserrechte ASG ab 2024.csv")
-wr.set_index("Brunnen ", inplace = True)
-wr.drop("BWV",axis = 0, inplace = True)
+if len(resFiles)>0 and useResFile:
+    if resFileName is None:
+        resFileName = resFiles[0]
+    wr_ts = pd.read_csv(extrLimits_path+resFileName, index_col = "date",parse_dates=True)
+    
+    if resFileUnits == "l/s":
+        wr_ts *= 86.4
+    elif resFileUnits == "m3/d":
+        pass
+    elif resFileUnits == "m3/s":
+        wr_ts *= 86400
+    else:
+        assert False, "Unit not implmented"
+    print(f"Using provided extraction limits time series file {extrLimits_path+resFileName}")
+else:
+    restrictions = {
+                    # "TB Altingen 3": {"rate": 0, "start": "02.11.2019", "end": "30.11.2019", "year": 2019},
+                    # "TB Breitenholz":{"rate": 0, "start": "02.11.2019", "end": "30.11.2019", "year": 2019},
+                    # "TB Kiebingen 5":{"rate": 0, "start": "02.11.2019", "end": "30.11.2019", "year": 2019},
+                    }
+    
+    restrictions = {k.lower(): v for k, v in restrictions.items()}
+    wr = pd.read_csv("./Wasserlinke/Wasserrechte ASG ab 2024.csv")
+    wr.set_index("Brunnen ", inplace = True)
+    wr.drop("BWV",axis = 0, inplace = True)
+    
+    wr_ts = pd.DataFrame()
+    for k in wr.index:
+        wr_ts[k] = np.zeros(dr.shape[0])
+    wr_ts.set_index(dr, inplace = True)
+    
+    
+    for k in wr.index:
+        for d in wr_ts.index:
+            wr_ts.loc[d,k] = wr.loc[k,"[m^3/Tag]"]
+    
+    wr_ts['TB Entringen 1'] = wr_ts["Entringen 1 u 2"]/2
+    wr_ts['TB Poltringen 1'] = wr_ts["Poltringen 1 u 2"]/2
+    wr_ts['TB Entringen 2'] = wr_ts["Entringen 1 u 2"]/2
+    wr_ts['TB Poltringen 2'] = wr_ts["Poltringen 1 u 2"]/2
+    wr_ts.drop(["Entringen 1 u 2", "Poltringen 1 u 2"], axis = 1, inplace = True)
+    newcols = ['TB Altingen 3', 'TB Breitenholz', 'TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3',
+                     'TB Kiebingen 4', 'TB Kiebingen 5', 'TB Kiebingen 6']
+    newcols.extend(wr_ts.columns[-4:])
+    
+    wr_ts.columns = [s.lower() for s in newcols]  
 
-wr_ts = pd.DataFrame()
-for k in wr.index:
-    wr_ts[k] = np.zeros(dr.shape[0])
-wr_ts.set_index(dr, inplace = True)
 
-
-for k in wr.index:
-    for d in wr_ts.index:
-        wr_ts.loc[d,k] = wr.loc[k,"[m^3/Tag]"]
-
-wr_ts['TB Entringen 1'] = wr_ts["Entringen 1 u 2"]/2
-wr_ts['TB Poltringen 1'] = wr_ts["Poltringen 1 u 2"]/2
-wr_ts['TB Entringen 2'] = wr_ts["Entringen 1 u 2"]/2
-wr_ts['TB Poltringen 2'] = wr_ts["Poltringen 1 u 2"]/2
-wr_ts.drop(["Entringen 1 u 2", "Poltringen 1 u 2"], axis = 1, inplace = True)
-newcols = ['TB Altingen 3', 'TB Breitenholz', 'TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3',
-                 'TB Kiebingen 4', 'TB Kiebingen 5', 'TB Kiebingen 6']
-newcols.extend(wr_ts.columns[-4:])
-
-wr_ts.columns = [s.lower() for s in newcols]  
-
-if restrictions is not None:
-    for key in restrictions.keys():
-        if key != "BWV":
-            s = pd.to_datetime(restrictions[key]["start"], dayfirst = True)
-            e = pd.to_datetime(restrictions[key]["end"], dayfirst = True)
-            cond = np.multiply(wr_ts.index>=s, wr_ts.index<=e)
-            wr_ts.loc[cond,key] = restrictions[key]["rate"]
- 
+    if restrictions is not None:
+        for key in restrictions.keys():
+            if key != "BWV":
+                s = pd.to_datetime(restrictions[key]["start"], dayfirst = True)
+                e = pd.to_datetime(restrictions[key]["end"], dayfirst = True)
+                cond = np.multiply(wr_ts.index>=s, wr_ts.index<=e)
+                wr_ts.loc[cond,key] = restrictions[key]["rate"]
+     
     
 if prior_sim:
     vobs = pd.read_csv("./spatial/vobs_close_sorted.csv") 
