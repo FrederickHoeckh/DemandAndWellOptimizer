@@ -97,9 +97,22 @@ individual extraction limit with the sum of all extraction limits.
 
 To account for irregularities in the well operation, an option to limit the well extraction is included. The limit can be any number larger than zero.
 To apply a restriction to a well, start- and end-date of the restriction, as well as the maximum possible rate during this time are passed to 
-the distribution tool. After the initial rates are computed, it is checked if any legal restricitions are exceeded, if so the rates are redistributed 
+the distribution tool. If multiple restricted periods are defined for the same well they are stored in a list within the dictionary (example given below).
+Alternatively restrictions can be passed on to the scripts in form of a time series, supported units are m^3/d, m^3/s, l/s (example given below).
+After the initial rates are computed, it is checked if any legal restricitions are exceeded, if so the rates are redistributed 
 if possible, until all limits are obeyed. The tool seeks to distribute the entire extraction without using any of the limited number of peak demand days. 
 If this is not possible, the tool keeps track of how many days have been used within a year. 
+
+#####Example Restrictions dictionary:
+restrictions = {"TB Altingen 3": {"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2020},
+                "TB Breitenholz":[{"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2020},
+                                          {"rate": 0, "start": "01.08.2020", "end": "30.08.2020", "year": 2020}]
+                }
+#####Example restrictions time series:
+date,tb kiebingen 1,tb kiebingen 2,tb kiebingen 3,tb kiebingen 4,tb kiebingen 5,tb kiebingen 6,tb altingen 3,tb breitenholz,tb entringen 1,tb entringen 2,tb poltringen 1,tb poltringen 2,BWV
+2025-11-01,0.042,0.0254,0.012962,0.0162,0.006759,0.006655,0.065,0.06,0.046296,0.046296,0.086805,0.086805,0.103
+2025-11-02,0.042,0.0254,0.012962,0.0162,0.0,0.006655,0.065,0.06,0.046296,0.046296,0.086805,0.086805,0.103
+
 
 Limitations:
 While in reality well extractions are controlled by a black-box model that consideres water levels in wells and energy costs on top of the legal limits.
