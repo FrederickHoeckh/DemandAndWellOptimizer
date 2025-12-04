@@ -4,6 +4,7 @@ Created on Thu Jan 30 09:21:57 2025
 
 @author: Frederick
 """
+import os
 import pandas as pd
 import numpy as np
 import pickle
@@ -96,10 +97,21 @@ def check_rates(demand_, rates_, wr, wr_ts_, restrictions, verbose = True, coupl
         if restrictions is not None:
             for key in restrictions.keys():
                 if key != "BWV":
-                    start = pd.to_datetime(restrictions[key]["start"], dayfirst = True)
-                    end = pd.to_datetime(restrictions[key]["end"], dayfirst = True)
-                    cond = np.multiply(wr_ts.index>=start, wr_ts.index<=end)
-                    flag.loc[cond,key] = -1
+                    if type(restrictions[key]) is dict:
+                        start = pd.to_datetime(restrictions[key]["start"], dayfirst = True)
+                        end = pd.to_datetime(restrictions[key]["end"], dayfirst = True)
+                        cond = np.multiply(wr_ts.index>=start, wr_ts.index<=end)
+                        flag.loc[cond,key] = -1
+                    elif type(restrictions[key]) is list:
+                        for index in range(len(restrictions[key])):
+                            start = pd.to_datetime(restrictions[key][index]["start"], dayfirst = True)
+                            end = pd.to_datetime(restrictions[key][index]["end"], dayfirst = True)
+                            cond = np.multiply(wr_ts.index>=start, wr_ts.index<=end)
+                            flag.loc[cond,key] = -1 
+        else:
+            cond = wr_ts<wr_ts.mean(axis = 0)/2
+            flag[cond] = -1 
+                
         if couple_compensation:
             for entry in restrictions:
                 if "Poltringen" in entry or "Entringen" in entry:
@@ -219,11 +231,17 @@ def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
     if restrictions is not None:
         for key in restrictions.keys():
             if key != "BWV":
-                start = pd.to_datetime(restrictions[key]["start"], dayfirst = True)
-                end = pd.to_datetime(restrictions[key]["end"], dayfirst = True)
-                cond = np.multiply(wr_ts.index>=start, wr_ts.index<=end)
-                wr_ts.loc[cond,key] = restrictions[key]["rate"]
-    
+                if type(restrictions[key]) is dict:
+                    start = pd.to_datetime(restrictions[key]["start"], dayfirst = True)
+                    end = pd.to_datetime(restrictions[key]["end"], dayfirst = True)
+                    cond = np.multiply(wr_ts.index>=start, wr_ts.index<=end)
+                    wr_ts.loc[cond,key] = restrictions[key]["rate"]
+                elif type(restrictions[key]) is list:
+                    for index in range(len(restrictions[key])):
+                        start = pd.to_datetime(restrictions[key][index]["start"], dayfirst = True)
+                        end = pd.to_datetime(restrictions[key][index]["end"], dayfirst = True)
+                        cond = np.multiply(wr_ts.index>=start, wr_ts.index<=end)
+                        wr_ts.loc[cond,key] = restrictions[key][index]["rate"]        
     
     frac_legal = wr_ts.div(wr_ts.sum(axis=1), axis = 0)
     
@@ -256,7 +274,7 @@ def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
     return rates,  wr_ts_withRes
 
 
-def getWellRates(PopVar, scenario, start, end, restrictions, bwv = None,  unit = "m^3/d", file = None, pop = None, hq = None):
+def getWellRates(PopVar, scenario, start, end, restrictions = None, bwv = None,  unit = "m^3/d", file = None, pop = None, hq = None, wr_ts = None):
     if file is None:
         demand = get_demand(PopVar, scenario, start, end)
     else:
@@ -280,12 +298,15 @@ def getWellRates(PopVar, scenario, start, end, restrictions, bwv = None,  unit =
     bwv_ts = pd.DataFrame()
     bwv_ts["BWV"] = np.ones(demand.shape[0])*bwv_d
     bwv_ts.set_index(demand.index,inplace = True)
-    
-    if "BWV" in restrictions.keys():
-        start = pd.to_datetime(restrictions["BWV"]["start"], dayfirst = True)
-        end = pd.to_datetime(restrictions["BWV"]["end"], dayfirst = True)
-        cond = np.multiply(bwv_ts.index>=start, bwv_ts.index<=end)
-        bwv_ts.loc[cond,"BWV"] = restrictions["BWV"]["rate"]/1000*86400
+    if restrictions is not None:
+        if "BWV" in restrictions.keys():
+            start = pd.to_datetime(restrictions["BWV"]["start"], dayfirst = True)
+            end = pd.to_datetime(restrictions["BWV"]["end"], dayfirst = True)
+            cond = np.multiply(bwv_ts.index>=start, bwv_ts.index<=end)
+            bwv_ts.loc[cond,"BWV"] = restrictions["BWV"]["rate"]/1000*86400
+    elif wr_ts is not None:
+        bwv_ts = wr_ts["BWV"]
+
     
     try:
         demand_after_bwv = demand-bwv_ts.values.squeeze()#.sub(bwv_ts, axis = 1)
@@ -328,6 +349,9 @@ if __name__ == "__main__":
     end = "2020-10-31"
     unit = "m^3/d"
     bwv = None
+    resFileName = None
+    resFileUnits = "m3/s" # "l/s", "m3/s", "m3/d"
+    
     dr = pd.date_range(start,end,)
 
     hq = pd.read_csv("./WellData/hq_sc.csv", index_col="Unnamed: 0") # Sensitivities
@@ -340,11 +364,32 @@ if __name__ == "__main__":
     else:
         assert True, "sensitivity names do not match!"    
     
-    restrictions = {"TB Altingen 3": {"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2025},
-                    "TB Breitenholz":{"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2025},
-                    }
+    extrLimits_path = "./ExtractionLimits/"
+    resFiles = os.listdir(extrLimits_path)
+    
+    if len(resFiles)>0:
+        if resFileName is None:
+            resFileName = resFiles[0]
+        wr_ts = pd.read_csv(extrLimits_path+resFileName, index_col = "date",parse_dates=True)
+        
+        if resFileUnits == "l/s":
+            wr_ts *= 86.4
+        elif resFileUnits == "m3/d":
+            pass
+        elif resFileUnits == "m3/s":
+            wr_ts *= 86400
+        else:
+            assert False, "Unit not implmented"
+        print(f"Using provided extraction limits time series file {extrLimits_path+resFileName}")
+        demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions=None, bwv=bwv, unit = unit, hq = hq, wr_ts = wr_ts)
+
+    else:
+        restrictions = {"TB Altingen 3": {"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2020},
+                        "TB Breitenholz":[{"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2020},
+                                          {"rate": 0, "start": "01.08.2020", "end": "30.08.2020", "year": 2020}]
+                        }
                     
-    demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, hq = hq)
+        demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, hq = hq, wr_ts = None)
 
 
 
@@ -365,7 +410,7 @@ if __name__ == "__main__":
     end = "2021-12-31"
     file = "./WaterDemand/syntheticDemand_14_21_max.csv"
     # restrictions = {"TB Breitenholz":{"rate": 0, "start": "01.03.2019", "end": "29.02.2020", "year": 2025}}
-    restriction = {}
+    restrictions = {}
     ew = pd.read_csv("./Population/EinwohnerASG_corrected.csv", index_col = "Jahr")
     pop = ew.sum(axis = 1).loc[2014:2021]
     pop.index = pd.to_datetime(pop.index.astype(str), format="%Y")

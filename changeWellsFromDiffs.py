@@ -514,8 +514,8 @@ s = "2019-11-18"
 e = "2019-11-24"
 drc = pd.date_range(s,e)
 
-writeNewFiles = False # if true, new wel and nam file are written
-evaluation = True
+writeNewFiles = True # if true, new wel and nam file are written
+evaluation = False
 prior_sim = True
 useWelFile = True
 override_limits = True # Flag that indicates if legal limits can be exceeded, specify 0<"buffer"<1
@@ -597,7 +597,7 @@ if prior_sim:
     #             hq.loc[row,col] *= 0.5
     #         else:
     #             hq.loc[row,col] *= 0.1
-    hq *= np.eye(len(hq))# Sensitivities
+    hq *= np.eye(len(hq))*1.5# Sensitivities
     hq[hq<1e-2]*=2
     if evaluation:
         obs0, mobs0,flags0,diffs0 = check_heads(start,end,vobs,thr,filepath = fp0,plotting = False)
@@ -706,7 +706,7 @@ rates.to_csv("./WellRates/new_well_rates.csv")
 
 if writeNewFiles:
     oldwelfile = "GW40_0.wel"
-    newwelfile = "GW40_opt.wel"
+    newwelfile = "GW40_opt2.wel"
     update_wel_from_dataframe2(
         template_wel_path=path+oldwelfile,
         nwf=rates,
