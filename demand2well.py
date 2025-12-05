@@ -288,6 +288,7 @@ def getWellRates(PopVar, scenario, start, end, restrictions = None, bwv = None, 
             demand["demand"] = pop*demand.values.squeeze()*1.091
         elif pop is None:
             print("No population given, rates from provided file are treated as total demand")
+            demand["demand"] *= 1.091
         start = demand.index[0]
         end = demand.index[-1]
     # demand = wells_orig.iloc[:,:-4].sum(axis = 1)/1.09+0.09692*86400
