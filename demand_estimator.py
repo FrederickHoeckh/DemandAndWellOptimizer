@@ -287,7 +287,7 @@ T_list = Parallel(n_jobs=8)(delayed(get_T4date)(date, frac_mat, T, xg) for date 
 
 Tavg = pd.DataFrame()
 Tavg["Tm"] = [m.mean() for m in T_list]
-Tavg["Ts"] = [m.std() for m in T_list]
+# Tavg["Ts"] = [m.std() for m in T_list]
 Tavg.set_index(date_range, inplace =True)
 
 #%% Wasserdemand

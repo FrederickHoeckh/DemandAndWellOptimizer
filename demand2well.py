@@ -282,10 +282,12 @@ def getWellRates(PopVar, scenario, start, end, restrictions = None, bwv = None, 
             demand = pd.read_csv(file, index_col="date", parse_dates=True)
         except ValueError:
             demand = pd.read_csv(file, index_col=0, parse_dates=True)
-        if type(pop) is not int:
+        if type(pop) is not int and pop is not None:
             demand["demand"] = pop.values.squeeze()*demand.values.squeeze()*1.091
-        else:
+        elif type(pop) is int:
             demand["demand"] = pop*demand.values.squeeze()*1.091
+        elif pop is None:
+            print("No population given, rates from provided file are treated as total demand")
         start = demand.index[0]
         end = demand.index[-1]
     # demand = wells_orig.iloc[:,:-4].sum(axis = 1)/1.09+0.09692*86400
@@ -368,7 +370,7 @@ if __name__ == "__main__":
     extrLimits_path = "./ExtractionLimits/"
     resFiles = os.listdir(extrLimits_path)
     
-    if len(resFiles)>0 and useResFile:
+    if len(resFiles)>0 and useResFile and False:
         if resFileName is None:
             resFileName = resFiles[0]
         wr_ts = pd.read_csv(extrLimits_path+resFileName, index_col = "date",parse_dates=True)
