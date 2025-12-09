@@ -180,7 +180,7 @@ def check_rates(demand_, rates_, wr, wr_ts_, restrictions, verbose = True, coupl
     return rates_, wr_ts_, excess
 
 
-def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
+def demand2well(demand, restrictions = None, wr_ts = None, hq=None, sensitivity_weight=0.5):
     """
     
 
@@ -201,34 +201,37 @@ def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
     None.
 
     """
-    path = './'
-    wr = pd.read_csv(path+"/Wasserlinke/Wasserrechte ASG ab 2024.csv")
-    wr.set_index("Brunnen ", inplace = True)
-    wr.drop("BWV",axis = 0, inplace = True)
+    if wr_ts is None:
+        if restrictions is None:
+            print("No restrictions provided, using full extration limits.")
+        path = './'
+        wr = pd.read_csv(path+"/Wasserlinke/Wasserrechte ASG ab 2024.csv")
+        wr.set_index("Brunnen ", inplace = True)
+        wr.drop("BWV",axis = 0, inplace = True)
+        
+        wr_ts = pd.DataFrame()
+        for k in wr.index:
+            wr_ts[k] = np.zeros(demand.shape[0])
+        wr_ts.set_index(demand.index, inplace = True)
+        
+        
+        for k in wr.index:
+            for d in wr_ts.index:
+                wr_ts.loc[d,k] = wr.loc[k,"[m^3/Tag]"]
     
-    wr_ts = pd.DataFrame()
-    for k in wr.index:
-        wr_ts[k] = np.zeros(demand.shape[0])
-    wr_ts.set_index(demand.index, inplace = True)
-    
-    
-    for k in wr.index:
-        for d in wr_ts.index:
-            wr_ts.loc[d,k] = wr.loc[k,"[m^3/Tag]"]
-
-    wr_ts['TB Entringen 1'] = wr_ts["Entringen 1 u 2"]/2
-    wr_ts['TB Poltringen 1'] = wr_ts["Poltringen 1 u 2"]/2
-    wr_ts['TB Entringen 2'] = wr_ts["Entringen 1 u 2"]/2
-    wr_ts['TB Poltringen 2'] = wr_ts["Poltringen 1 u 2"]/2
-    wr_ts.drop(["Entringen 1 u 2", "Poltringen 1 u 2"], axis = 1, inplace = True)
-    newcols = ['TB Altingen 3', 'TB Breitenholz', 'TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3',
-                     'TB Kiebingen 4', 'TB Kiebingen 5', 'TB Kiebingen 6']
-    newcols.extend(wr_ts.columns[-4:])
-    wr_ts.columns = newcols
-    
-    frac_ts_nores = wr_ts.div(wr_ts.sum(axis=1), axis = 0)
-    
-    if restrictions is not None:
+        wr_ts['TB Entringen 1'] = wr_ts["Entringen 1 u 2"]/2
+        wr_ts['TB Poltringen 1'] = wr_ts["Poltringen 1 u 2"]/2
+        wr_ts['TB Entringen 2'] = wr_ts["Entringen 1 u 2"]/2
+        wr_ts['TB Poltringen 2'] = wr_ts["Poltringen 1 u 2"]/2
+        wr_ts.drop(["Entringen 1 u 2", "Poltringen 1 u 2"], axis = 1, inplace = True)
+        newcols = ['TB Altingen 3', 'TB Breitenholz', 'TB Kiebingen 1', 'TB Kiebingen 2', 'TB Kiebingen 3',
+                         'TB Kiebingen 4', 'TB Kiebingen 5', 'TB Kiebingen 6']
+        newcols.extend(wr_ts.columns[-4:])
+        wr_ts.columns = newcols
+        
+        frac_ts_nores = wr_ts.div(wr_ts.sum(axis=1), axis = 0)
+        
+        # if restrictions is not None:
         for key in restrictions.keys():
             if key != "BWV":
                 if type(restrictions[key]) is dict:
@@ -241,8 +244,18 @@ def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
                         start = pd.to_datetime(restrictions[key][index]["start"], dayfirst = True)
                         end = pd.to_datetime(restrictions[key][index]["end"], dayfirst = True)
                         cond = np.multiply(wr_ts.index>=start, wr_ts.index<=end)
-                        wr_ts.loc[cond,key] = restrictions[key][index]["rate"]        
-    
+                        wr_ts.loc[cond,key] = restrictions[key][index]["rate"]  
+    elif wr_ts is not None:
+        print("Using provided wr_ts file")
+        wr_ts_ = wr_ts.copy()
+        try:
+            wr_ts.drop("BWV", axis = 1, inplace = True)
+        except KeyError:
+            wr_ts.drop("bwv", axis = 1, inplace = True)
+        wr = pd.read_csv("./Wasserlinke/Wasserrechte ASG ab 2024.csv")
+        wr.set_index("Brunnen ", inplace = True)
+        wr.drop("BWV",axis = 0, inplace = True)
+
     frac_legal = wr_ts.div(wr_ts.sum(axis=1), axis = 0)
     
     if hq is not None and sensitivity_weight > 0:
@@ -256,8 +269,6 @@ def demand2well(demand, restrictions, hq=None, sensitivity_weight=0.5):
         frac_weighted = pd.DataFrame(frac_weighted, index=frac_legal.index, columns=frac_legal.columns)
     else:
         frac_weighted = frac_legal
-    
-    diff = frac_ts_nores - frac_weighted
     
     rates = pd.DataFrame()
     rates["date"] = demand.index
@@ -308,16 +319,12 @@ def getWellRates(PopVar, scenario, start, end, restrictions = None, bwv = None, 
             cond = np.multiply(bwv_ts.index>=start, bwv_ts.index<=end)
             bwv_ts.loc[cond,"BWV"] = restrictions["BWV"]["rate"]/1000*86400
     elif wr_ts is not None:
-        bwv_ts = wr_ts["BWV"]
-
+        bwv_ts["BWV"] = wr_ts["BWV"]
     
-    try:
-        demand_after_bwv = demand-bwv_ts.values.squeeze()#.sub(bwv_ts, axis = 1)
-    except ValueError:
-        demand_after_bwv = demand-bwv_ts.values
+    demand_after_bwv = demand["demand"]-bwv_ts["BWV"]
     
     bwv_ts = pd.DataFrame(bwv_ts, index=demand.index)
-    well_rates, wr_ts = demand2well(demand_after_bwv, restrictions, hq = hq, sensitivity_weight=0.5)
+    well_rates, wr_ts = demand2well(demand_after_bwv, restrictions = None, wr_ts = wr_ts, hq = hq, sensitivity_weight=0.5)
     
     # full_dates = pd.date_range(start, end, freq="D")
     # well_rates = well_rates.reindex(full_dates).fillna(method="bfill")
@@ -353,8 +360,9 @@ if __name__ == "__main__":
     unit = "m^3/d"
     bwv = None
     useResFile = True
-    resFileName = None
+    resFileName = "user_defined_restrictions.csv"
     resFileUnits = "m3/s" # "l/s", "m3/s", "m3/d"
+    file = "./WaterDemand/user_defined_demand.csv" 
     
     dr = pd.date_range(start,end,)
 
@@ -367,11 +375,12 @@ if __name__ == "__main__":
         hq.index=nn2
     else:
         assert True, "sensitivity names do not match!"    
+    hq.index = [s.lower() for s in hq.index]
     
     extrLimits_path = "./ExtractionLimits/"
     resFiles = os.listdir(extrLimits_path)
     
-    if len(resFiles)>0 and useResFile and False:
+    if len(resFiles)>0 and useResFile:
         if resFileName is None:
             resFileName = resFiles[0]
         wr_ts = pd.read_csv(extrLimits_path+resFileName, index_col = "date",parse_dates=True)
@@ -385,17 +394,18 @@ if __name__ == "__main__":
         else:
             assert False, "Unit not implmented"
         print(f"Using provided extraction limits time series file {extrLimits_path+resFileName}")
-        demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions=None, bwv=bwv, unit = unit, hq = hq, wr_ts = wr_ts)
-
+        start, end = wr_ts.index[[0,-1]]
+        demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions=None, bwv=bwv, unit = unit, hq = hq, wr_ts = wr_ts, file = file)
+        # demand, demand_after_bwv, wells, bwv_ts, wr_ts = getWellRates(PopVar, scenario, start, end,  None, bwv, unit = unit, file = file, pop = None)
     else:
         restrictions = {"TB Altingen 3": {"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2020},
                         "TB Breitenholz":[{"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2020},
                                           {"rate": 0, "start": "01.08.2020", "end": "30.08.2020", "year": 2020}]
                         }
-                    
-        demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, hq = hq, wr_ts = None)
-
-
+           
+        # demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, hq = hq, wr_ts = None)
+        demand, demand_after_bwv, wells, bwv_ts, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions, bwv, unit = unit, file = file, pop = None)
+        
 
 #%%             
     wellfile = pd.read_csv("./WellRates/wells_asg_swt_17_21.csv")
