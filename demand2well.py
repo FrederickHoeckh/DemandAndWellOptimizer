@@ -340,7 +340,7 @@ def getWellRates(PopVar, scenario, start, end, restrictions = None, bwv = None, 
     demand_after_bwv = demand["demand"]-bwv_ts["BWV"]
     
     bwv_ts = pd.DataFrame(bwv_ts, index=demand.index)
-    well_rates, wr_ts = demand2well(demand_after_bwv, restrictions = None, wr_ts = wr_ts, hq = hq, sensitivity_weight=0.5)
+    well_rates, wr_ts = demand2well(demand_after_bwv, restrictions = restrictions, wr_ts = wr_ts, hq = hq, sensitivity_weight=0.5)
     
     # full_dates = pd.date_range(start, end, freq="D")
     # well_rates = well_rates.reindex(full_dates).fillna(method="bfill")
@@ -412,8 +412,8 @@ if __name__ == "__main__":
         print(f"Using provided extraction limits time series file {extrLimits_path+resFileName}")
         start, end = wr_ts.index[[0,-1]]
         wr_ts["tb kiebingen 2"].iloc[0:10]=0
-        demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions=None, bwv=bwv, unit = unit, hq = hq, wr_ts = wr_ts, file = file)
-        # demand, demand_after_bwv, wells, bwv_ts, wr_ts = getWellRates(PopVar, scenario, start, end,  None, bwv, unit = unit, file = file, pop = None)
+        # demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions=None, bwv=bwv, unit = unit, hq = hq, wr_ts = wr_ts, file = file)
+        demand, demand_after_bwv, wells, bwv_ts, wr_ts = getWellRates(PopVar, scenario, start, end,  restrictions={}, bwv=bwv, unit = unit, file = None, pop = None)
     else:
         restrictions = {"TB Altingen 3": {"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2020},
                         "TB Breitenholz":[{"rate": 0, "start": "01.05.2020", "end": "30.07.2020", "year": 2020},
