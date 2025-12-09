@@ -263,10 +263,26 @@ def demand2well(demand, restrictions = None, wr_ts = None, hq=None, sensitivity_
         # ensure columns match
         sens = sens.loc[frac_legal.columns]
         sens = sens / sens.sum()  # normalize
+        
+        # Step 1 — weighted mixing
+        raw = ((1 - sensitivity_weight) * frac_legal.values +
+               sensitivity_weight * (frac_legal.values @ sens.values))
+        
+        # Step 2 — enforce legal zeros
+        mask = (frac_legal.values == 0)
+        raw[mask] = 0
+        
+        # Step 3 — renormalize across allowed wells only
+        row_sums = raw.sum(axis=1, keepdims=True)
+        frac_weighted = raw / row_sums
+        
+        frac_weighted = pd.DataFrame(frac_weighted,
+                                     index=frac_legal.index,
+                                     columns=frac_legal.columns)
     
-        frac_weighted = (1 - sensitivity_weight) * frac_legal.values + sensitivity_weight * (frac_legal.values @ sens.values)
-        frac_weighted = frac_weighted / frac_weighted.sum(axis=1)[:, None]  # normalize
-        frac_weighted = pd.DataFrame(frac_weighted, index=frac_legal.index, columns=frac_legal.columns)
+        # frac_weighted = (1 - sensitivity_weight) * frac_legal.values + sensitivity_weight * (frac_legal.values @ sens.values)
+        # frac_weighted = frac_weighted / frac_weighted.sum(axis=1)[:, None]  # normalize
+        # frac_weighted = pd.DataFrame(frac_weighted, index=frac_legal.index, columns=frac_legal.columns)
     else:
         frac_weighted = frac_legal
     
@@ -395,6 +411,7 @@ if __name__ == "__main__":
             assert False, "Unit not implmented"
         print(f"Using provided extraction limits time series file {extrLimits_path+resFileName}")
         start, end = wr_ts.index[[0,-1]]
+        wr_ts["tb kiebingen 2"].iloc[0:10]=0
         demand, demand_after_bwv, wells, bwv, wr_ts = getWellRates(PopVar, scenario, start, end, restrictions=None, bwv=bwv, unit = unit, hq = hq, wr_ts = wr_ts, file = file)
         # demand, demand_after_bwv, wells, bwv_ts, wr_ts = getWellRates(PopVar, scenario, start, end,  None, bwv, unit = unit, file = file, pop = None)
     else:
